@@ -48,6 +48,25 @@ def print_plan_report(recommendations: list[ChannelRecommendation]) -> None:
             )
 
 
+def _save_trust_cache_if_sightings(
+    cache_path: Path, external_sightings: list[ScanEntry], updated_cache: dict[str, int]
+) -> None:
+    """Persist the trust cache, but skip entirely on a fully-failed poll.
+
+    If every host's neighbor-scan poll failed this run, external_sightings
+    is empty and updated_cache would just be {} -- writing that would wipe
+    out trust history built over prior runs for no good reason. A write
+    failure (e.g. the cache directory doesn't exist yet) is a warning, not
+    fatal -- the plan report must still print either way.
+    """
+    if not external_sightings:
+        return
+    try:
+        save_cache(cache_path, updated_cache)
+    except OSError as exc:
+        print(f"warning: failed to write trust cache {cache_path}: {exc}", file=sys.stderr)
+
+
 def _read_ap_config() -> tuple[list[str], str, str] | None:
     hosts = [h.strip() for h in os.environ.get("AP_HOSTS", "").split(",") if h.strip()]
     community = os.environ.get("SNMP_COMMUNITY", "public")
@@ -116,7 +135,7 @@ def run_plan(args: argparse.Namespace) -> int:
 
     cache = load_cache(cache_path)
     trusted, updated_cache = process_sightings(external_sightings, cache)
-    save_cache(cache_path, updated_cache)
+    _save_trust_cache_if_sightings(cache_path, external_sightings, updated_cache)
 
     if args.debug_dump:
         for sighting in trusted:

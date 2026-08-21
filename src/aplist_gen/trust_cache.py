@@ -12,11 +12,15 @@ def load_cache(path: Path) -> dict[str, int]:
     """
     try:
         raw = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
+        if not isinstance(raw, dict):
+            return {}
+        return {k: int(v) for k, v in raw.items() if isinstance(v, (int, float))}
+    except (OSError, ValueError):
+        # OSError covers a missing/unreadable/directory path; ValueError
+        # covers a JSON-decode failure, a binary/truncated file's
+        # UnicodeDecodeError (a ValueError subclass), and int() choking on
+        # a value json.loads happily parsed but can't coerce (e.g. NaN).
         return {}
-    if not isinstance(raw, dict):
-        return {}
-    return {k: int(v) for k, v in raw.items() if isinstance(v, (int, float))}
 
 
 def save_cache(path: Path, cache: dict[str, int]) -> None:

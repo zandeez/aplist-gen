@@ -1,4 +1,5 @@
-from aplist_gen import parse_args, print_plan_report
+from aplist_gen import _save_trust_cache_if_sightings, main, parse_args, print_plan_report
+from aplist_gen.core import ScanEntry
 from aplist_gen.planner import ChannelRecommendation
 
 
@@ -50,3 +51,45 @@ def test_print_plan_report_recommends_change(capsys):
     out = capsys.readouterr().out
     assert "6 -> 1" in out
     assert "overlaps cluster AP" in out
+
+
+def test_main_plan_without_ap_hosts_exits_1(monkeypatch, capsys):
+    monkeypatch.delenv("AP_HOSTS", raising=False)
+
+    exit_code = main(["plan"])
+
+    assert exit_code == 1
+    assert "AP_HOSTS is not set" in capsys.readouterr().err
+
+
+def test_save_trust_cache_skips_write_when_no_sightings(tmp_path):
+    # A fully-failed neighbor-scan poll (every host unreachable) must not
+    # wipe out trust history built over prior runs.
+    path = tmp_path / "missing_dir" / "cache.json"
+
+    _save_trust_cache_if_sightings(path, external_sightings=[], updated_cache={"AA:BB:CC:DD:EE:01": 1})
+
+    assert not path.exists()
+
+
+def test_save_trust_cache_warns_instead_of_raising_on_write_failure(tmp_path, capsys):
+    path = tmp_path / "missing_dir" / "cache.json"
+    sighting = ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="NeighboursWifi", channel=6)
+
+    _save_trust_cache_if_sightings(
+        path, external_sightings=[sighting], updated_cache={"DE:AD:BE:EF:00:01": 1}
+    )
+
+    assert "warning" in capsys.readouterr().err
+    assert not path.exists()
+
+
+def test_save_trust_cache_writes_when_sightings_present(tmp_path):
+    path = tmp_path / "cache.json"
+    sighting = ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="NeighboursWifi", channel=6)
+
+    _save_trust_cache_if_sightings(
+        path, external_sightings=[sighting], updated_cache={"DE:AD:BE:EF:00:01": 1}
+    )
+
+    assert path.exists()
