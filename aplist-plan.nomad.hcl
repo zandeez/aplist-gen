@@ -28,8 +28,8 @@ job "aplist-plan" {
       config {
         # Same image as aplist-gen -- see its TODO note on pinning a
         # real tag once the CI pipeline has built one.
-        image   = "registry.gitlab.com/zandeez/aplist-gen:main"
-        args    = ["plan"]
+        image = "registry.gitlab.com/zandeez/aplist-gen:main"
+        args  = ["plan"]
       }
 
       volume_mount {
@@ -44,10 +44,16 @@ job "aplist-plan" {
         PLAN_CACHE_PATH = "/cache/plan_cache.json"
       }
 
-      # Same SNMP community variable as aplist-gen.
+      # SNMP community pulled from a Nomad variable, not a flat file or
+      # systemd EnvironmentFile. Under Nomad's default workload-identity
+      # ACL policy a task can only read its own job's nomad/jobs/<job-id>
+      # variable path, not another job's -- so this job needs its OWN
+      # Nomad variable set before first deploy (separately from
+      # aplist-gen's). Set it with:
+      #   nomad var put nomad/jobs/aplist-plan community=public
       template {
         data        = <<EOH
-SNMP_COMMUNITY={{ with nomadVar "nomad/jobs/aplist-gen" }}{{ .community }}{{ end }}
+SNMP_COMMUNITY={{ with nomadVar "nomad/jobs/aplist-plan" }}{{ .community }}{{ end }}
 EOH
         destination = "secrets/snmp.env"
         env         = true
