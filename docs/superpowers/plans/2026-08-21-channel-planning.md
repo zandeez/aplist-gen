@@ -19,9 +19,9 @@
 - Per-host SNMP failures are logged as a warning and skipped, never fatal — matching `poll_all`'s existing `asyncio.gather(..., return_exceptions=True)` pattern.
 - Run tests with `uv run pytest` from the repo root.
 
-## Important note on Task 6
+## Note on Task 6
 
-**Task 6 requires live network access to the AP cluster (192.0.2.80, 192.0.2.149, 192.0.2.78) that this sandbox does not have** (confirmed: no `snmp` tools installed, no route to those hosts). It cannot be executed by an agent working in this environment. It must be run by hand, or by an agent/session running on the home LAN with `snmpwalk` installed. All other tasks (1–5, 7, 8) are self-contained and fully agent-executable — they can be done in any order relative to Task 6, except Task 7 needs Task 6's `neighbor_scan.py` module to exist (with real OIDs) before its CLI path can be smoke-tested end-to-end, though Task 7's own unit tests don't require it.
+Task 6 originally required live LAN access this sandbox didn't have. That access showed up mid-plan (2026-08-21) — `snmpwalk` is installed and the AP cluster is reachable — so Task 6's neighbor-scan OIDs have already been verified against real hardware (see Task 6 for the confirmed live output) and the task is now fully executable like the rest of the plan.
 
 ---
 
@@ -727,7 +727,7 @@ git commit -m "feat: add channel scoring and greedy assignment planner"
 
 ---
 
-### Task 6: [MANUAL — requires LAN access] Discover neighbor-scan OIDs & implement `neighbor_scan.py`
+### Task 6: Implement `neighbor_scan.py` with the confirmed OIDs
 
 **Files:**
 - Create: `src/aplist_gen/neighbor_scan.py`
@@ -736,36 +736,16 @@ git commit -m "feat: add channel scoring and greedy assignment planner"
 - Consumes: `walk_bounded`, `format_bssid` from `snmp_utils.py` (Task 1); `parse_neighbor_scan_table` from `core.py` (Task 3).
 - Produces: `poll_neighbors(host: str, community: str, own_essid: str) -> list[ScanEntry]` (async), `poll_all_neighbors(hosts: list[str], community: str, own_essid: str) -> list[ScanEntry]` (async) — used by Task 7 (CLI `plan` subcommand).
 
-⚠️ **This task cannot be run by an agent in this sandbox** — there is no network route from here to the AP cluster. Run it from a machine on the home LAN (192.0.2.0/24) with `snmp` tools installed.
-
-- [ ] **Step 1: Install SNMP tools on a machine with LAN access**
-
-```bash
-sudo apt install snmp   # or your distro's equivalent
-```
-
-- [ ] **Step 2: Verify the candidate neighbor-scan OIDs against a live AP**
-
-The AP hardware is Colubris (rebadged as HP MSM), and the same `COLUBRIS-802DOT11-MIB` module that defines `poller.py`'s existing own-radio OIDs (all under `1.3.6.1.4.1.8744.5.4`) also defines a `coDot11ScanTable` — exactly the RF neighbor-scan table needed here, with `MacAddress`/`Channel`/`SSID`/`SignalLevel` (units: dBm) columns, indexed the same `{ifIndex, scanIndex}` way as the existing association table. Deriving its numeric OID the same way `poller.py`'s existing constants derive from that MIB (cross-checked against two of them — `coDot11ap` → `8744.5.4.1` matches `BSSID_OID`'s prefix, `coDot11phy` → `8744.5.4.3` matches `CHAN_5G_OID`'s prefix) gives these candidates:
+The AP hardware is Colubris (rebadged as HP MSM), and the same `COLUBRIS-802DOT11-MIB` module that defines `poller.py`'s existing own-radio OIDs (all under `1.3.6.1.4.1.8744.5.4`) also defines a `coDot11ScanTable` — the RF neighbor-scan table needed here, with `MacAddress`/`Channel`/`SSID`/`SignalLevel` (units: dBm) columns, indexed the same `{ifIndex, scanIndex}` way as the existing association table. Its numeric OID was derived the same way `poller.py`'s existing constants derive from that MIB, then **confirmed live against 192.0.2.80 on 2026-08-21** (`snmpwalk -v2c -c public 192.0.2.80 1.3.6.1.4.1.8744.5.4.1.7`) — 110 rows came back across the cluster's radios, with real neighbouring-network data exactly matching the expected shape (e.g. `SSID: "EE WiFi"`, `SSID: "SKY27819"`, channel `36`, signal levels like `-83`, `-91`):
 
 - BSSID (`coDot11ScanMacAddress`): `1.3.6.1.4.1.8744.5.4.1.7.1.2`
 - Channel (`coDot11ScanChannel`): `1.3.6.1.4.1.8744.5.4.1.7.1.3`
 - ESSID (`coDot11ScanSSID`): `1.3.6.1.4.1.8744.5.4.1.7.1.4`
 - Signal level / RSSI, dBm (`coDot11ScanSignalLevel`): `1.3.6.1.4.1.8744.5.4.1.7.1.5`
 
-These are high-confidence, not certain — the MIB source is dated 2008 and firmware revisions can drift. Verify with one targeted walk before trusting them:
+- [ ] **Step 1: Implement `neighbor_scan.py` with the confirmed OIDs**
 
-```bash
-snmpwalk -v2c -c <community> 192.0.2.80 1.3.6.1.4.1.8744.5.4.1.7
-```
-
-(Substitute the real SNMP community — `nomad var get nomad/jobs/aplist-gen` on the Nomad cluster, or ask whoever set it up.)
-
-Expected: rows for detected nearby devices — likely more rows than the AP has radios/VAPs, since this is one row per detected device, not per own-radio VAP. If the walk returns nothing or clearly wrong-shaped data (e.g. no plausible MAC-address-like octet strings under `.2`), fall back to walking the whole `1.3.6.1.4.1.8744.5.4` branch and searching for a table matching that shape instead — the exact numeric suffix may have shifted on this firmware revision, but the column layout (MAC, channel, SSID, signal level in that relative order within the entry) should still hold.
-
-- [ ] **Step 3: Implement `neighbor_scan.py` with the verified OIDs**
-
-Create `src/aplist_gen/neighbor_scan.py`, using the OIDs confirmed in Step 2 (adjust the four constants below if Step 2's fallback found different values):
+Create `src/aplist_gen/neighbor_scan.py`:
 
 ```python
 import asyncio
@@ -828,19 +808,19 @@ async def poll_all_neighbors(hosts: list[str], community: str, own_essid: str) -
 
 Add `import asyncio` and `import sys` to the top of the file alongside the `pysnmp`/`aplist_gen` imports.
 
-- [ ] **Step 4: Confirm end-to-end against a live AP**
+- [ ] **Step 2: Confirm end-to-end against a live AP**
 
 ```bash
 uv run python -c "
 import asyncio
 from aplist_gen.neighbor_scan import poll_neighbors
-print(asyncio.run(poll_neighbors('192.0.2.80', '<community>', 'My Network')))
+print(asyncio.run(poll_neighbors('192.0.2.80', 'public', 'My Network')))
 "
 ```
 
-Expected: a list of `ScanEntry` for nearby non-"My Network" networks (or an empty list if none are currently in range — not an error).
+Expected: a list of `ScanEntry` for nearby non-"My Network" networks (this cluster's live data has 100+ external sightings across its radios, so an empty list here would mean something's wrong, not that none are in range).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add src/aplist_gen/neighbor_scan.py
