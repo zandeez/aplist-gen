@@ -2,6 +2,7 @@ from aplist_gen.core import (
     APRecord,
     ScanEntry,
     filter_cluster_aps,
+    parse_neighbor_scan_table,
     parse_own_radio_tables,
     to_simple_ap_list_text,
     write_aplist_xml,
@@ -109,3 +110,51 @@ def test_scan_entry_accepts_rssi():
     entry = ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="NeighboursWifi", channel=44, rssi=-52)
 
     assert entry.rssi == -52
+
+
+def test_parse_neighbor_scan_table_excludes_own_essid():
+    bssids = {"1": "02:00:00:00:00:01"}
+    essids = {"1": "My Network"}
+    channels = {"1": "132"}
+    rssis = {"1": "-50"}
+
+    entries = parse_neighbor_scan_table(bssids, essids, channels, rssis, own_essid="My Network")
+
+    assert entries == []
+
+
+def test_parse_neighbor_scan_table_includes_external_with_rssi():
+    bssids = {"1": "DE:AD:BE:EF:00:01"}
+    essids = {"1": "NeighboursWifi"}
+    channels = {"1": "44"}
+    rssis = {"1": "-52"}
+
+    entries = parse_neighbor_scan_table(bssids, essids, channels, rssis, own_essid="My Network")
+
+    assert entries == [
+        ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="NeighboursWifi", channel=44, rssi=-52)
+    ]
+
+
+def test_parse_neighbor_scan_table_defaults_missing_rssi_to_none():
+    bssids = {"1": "DE:AD:BE:EF:00:01"}
+    essids = {"1": "NeighboursWifi"}
+    channels = {"1": "44"}
+    rssis: dict[str, str] = {}
+
+    entries = parse_neighbor_scan_table(bssids, essids, channels, rssis, own_essid="My Network")
+
+    assert entries == [
+        ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="NeighboursWifi", channel=44, rssi=None)
+    ]
+
+
+def test_parse_neighbor_scan_table_skips_row_with_no_channel():
+    bssids = {"1": "DE:AD:BE:EF:00:01"}
+    essids = {"1": "NeighboursWifi"}
+    channels: dict[str, str] = {}
+    rssis: dict[str, str] = {}
+
+    entries = parse_neighbor_scan_table(bssids, essids, channels, rssis, own_essid="My Network")
+
+    assert entries == []

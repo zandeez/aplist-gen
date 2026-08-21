@@ -43,6 +43,27 @@ def parse_own_radio_tables(
     return records
 
 
+def parse_neighbor_scan_table(
+    bssids: dict[str, str],
+    essids: dict[str, str],
+    channels: dict[str, str],
+    rssis: dict[str, str],
+    own_essid: str,
+) -> list[ScanEntry]:
+    entries: list[ScanEntry] = []
+    for suffix in sorted(bssids):
+        essid = essids.get(suffix)
+        channel = channels.get(suffix)
+        if essid is None or essid == own_essid or channel is None:
+            continue
+        rssi_raw = rssis.get(suffix)
+        rssi = int(rssi_raw) if rssi_raw is not None else None
+        entries.append(
+            ScanEntry(bssid=bssids[suffix], essid=essid, channel=int(channel), rssi=rssi)
+        )
+    return entries
+
+
 def to_simple_ap_list_text(records: list[APRecord]) -> str:
     lines = ["<?xml version='1.0'?>", "<simple-ap-list>", "# MAC SSID"]
     for record in records:
