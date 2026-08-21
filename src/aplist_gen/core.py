@@ -6,6 +6,7 @@ class ScanEntry:
     bssid: str
     essid: str
     channel: int
+    rssi: int | None = None
 
 
 @dataclass(frozen=True)

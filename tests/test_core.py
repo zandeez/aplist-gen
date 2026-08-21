@@ -97,3 +97,15 @@ def test_write_aplist_xml_format():
 
     assert '<ap mac="02:00:00:00:00:02" ssid="My Network" freq="132"/>' in xml
     assert xml.startswith("<?xml version='1.0'?>")
+
+
+def test_scan_entry_rssi_defaults_to_none():
+    entry = ScanEntry(bssid="02:00:00:00:00:01", essid="My Network", channel=132)
+
+    assert entry.rssi is None
+
+
+def test_scan_entry_accepts_rssi():
+    entry = ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="NeighboursWifi", channel=44, rssi=-52)
+
+    assert entry.rssi == -52
