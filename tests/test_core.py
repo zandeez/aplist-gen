@@ -158,3 +158,31 @@ def test_parse_neighbor_scan_table_skips_row_with_no_channel():
     entries = parse_neighbor_scan_table(bssids, essids, channels, rssis, own_essid="My Network")
 
     assert entries == []
+
+
+def test_parse_neighbor_scan_table_skips_row_with_unparseable_channel():
+    # The neighbor-scan table is known-unreliable in production (~110 rows
+    # per host); one malformed row must not discard the other good rows.
+    bssids = {"1": "DE:AD:BE:EF:00:01", "2": "DE:AD:BE:EF:00:02"}
+    essids = {"1": "NeighboursWifi", "2": "OtherWifi"}
+    channels = {"1": "", "2": "44"}
+    rssis = {"1": "-52", "2": "-60"}
+
+    entries = parse_neighbor_scan_table(bssids, essids, channels, rssis, own_essid="My Network")
+
+    assert entries == [
+        ScanEntry(bssid="DE:AD:BE:EF:00:02", essid="OtherWifi", channel=44, rssi=-60)
+    ]
+
+
+def test_parse_neighbor_scan_table_falls_back_to_none_rssi_when_unparseable():
+    bssids = {"1": "DE:AD:BE:EF:00:01"}
+    essids = {"1": "NeighboursWifi"}
+    channels = {"1": "44"}
+    rssis = {"1": ""}
+
+    entries = parse_neighbor_scan_table(bssids, essids, channels, rssis, own_essid="My Network")
+
+    assert entries == [
+        ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="NeighboursWifi", channel=44, rssi=None)
+    ]

@@ -53,14 +53,23 @@ def parse_neighbor_scan_table(
     entries: list[ScanEntry] = []
     for suffix in sorted(bssids):
         essid = essids.get(suffix)
-        channel = channels.get(suffix)
-        if essid is None or essid == own_essid or channel is None:
+        channel_raw = channels.get(suffix)
+        if essid is None or essid == own_essid or channel_raw is None:
+            continue
+        try:
+            channel = int(channel_raw)
+        except ValueError:
+            # This table is known-unreliable (~110 rows/host in production);
+            # one row with a malformed channel shouldn't discard the rest.
             continue
         rssi_raw = rssis.get(suffix)
-        rssi = int(rssi_raw) if rssi_raw is not None else None
-        entries.append(
-            ScanEntry(bssid=bssids[suffix], essid=essid, channel=int(channel), rssi=rssi)
-        )
+        try:
+            rssi = int(rssi_raw) if rssi_raw is not None else None
+        except ValueError:
+            # rssi is optional data -- a malformed value is equivalent to
+            # no value, same as a missing one.
+            rssi = None
+        entries.append(ScanEntry(bssid=bssids[suffix], essid=essid, channel=channel, rssi=rssi))
     return entries
 
 
