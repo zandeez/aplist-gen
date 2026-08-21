@@ -1,4 +1,5 @@
 import datetime
+import itertools
 from dataclasses import dataclass
 
 from aplist_gen.core import APRecord, ScanEntry
@@ -93,26 +94,71 @@ def dfs_penalty_for(host: str | None, now: datetime.datetime) -> float:
     return DFS_PENALTY
 
 
-def _candidate_cost(
-    candidate: int,
-    band: str,
-    assigned: dict[str, int],
-    trusted_external: list[ScanEntry],
-    dfs_channels: set[int],
-    dfs_penalty: float,
-) -> float:
+def _external_cost(candidate: int, band: str, trusted_external: list[ScanEntry]) -> float:
     cost = 0.0
-    for other_channel in assigned.values():
-        if band_of_channel(other_channel) != band:
-            continue
-        cost += cluster_overlap_cost(candidate, other_channel, band)
     for sighting in trusted_external:
         if band_of_channel(sighting.channel) != band:
             continue
         cost += cluster_overlap_cost(candidate, sighting.channel, band) * _signal_weight(sighting.rssi)
-    if candidate in dfs_channels:
-        cost += dfs_penalty
     return cost
+
+
+def _total_band_cost(
+    channels: dict[str, int],
+    band: str,
+    trusted_external: list[ScanEntry],
+    dfs_channels: set[int],
+    dfs_penalties: dict[str, float],
+) -> float:
+    cost = 0.0
+    bssids = list(channels)
+    for i, bssid_a in enumerate(bssids):
+        channel_a = channels[bssid_a]
+        for bssid_b in bssids[i + 1 :]:
+            cost += cluster_overlap_cost(channel_a, channels[bssid_b], band)
+        cost += _external_cost(channel_a, band, trusted_external)
+        if channel_a in dfs_channels:
+            cost += dfs_penalties[bssid_a]
+    return cost
+
+
+def _best_band_assignment(
+    records: list[APRecord],
+    band: str,
+    candidates: list[int],
+    trusted_external: list[ScanEntry],
+    dfs_channels: set[int],
+    dfs_penalties: dict[str, float],
+) -> dict[str, int]:
+    """Brute-force the lowest-total-cost channel combination across every
+    radio in this band jointly, instead of deciding one radio at a time.
+
+    Feasible at this cluster's scale: a handful of radios per band times a
+    few dozen candidate channels at most is a few hundred thousand
+    combinations, evaluated in well under a second.
+    """
+    bssids = sorted(r.bssid for r in records)
+    current = {r.bssid: r.channel for r in records}
+
+    def sort_key(channels: dict[str, int]) -> tuple[float, tuple[int, ...], tuple[int, ...]]:
+        cost = _total_band_cost(channels, band, trusted_external, dfs_channels, dfs_penalties)
+        # Tie-break 1: fewest radios changed from their current channel --
+        # the same "no needless churn" principle the per-radio version had,
+        # now applied cluster-wide instead of one radio at a time.
+        changed = tuple(0 if channels[b] == current[b] else 1 for b in bssids)
+        # Tie-break 2: deterministic final choice among equally-stable ties.
+        chosen = tuple(channels[b] for b in bssids)
+        return (cost, changed, chosen)
+
+    best = current
+    best_key = sort_key(best)
+    for combo in itertools.product(candidates, repeat=len(bssids)):
+        channels = dict(zip(bssids, combo))
+        key = sort_key(channels)
+        if key < best_key:
+            best_key = key
+            best = channels
+    return best
 
 
 def _contributors(
@@ -182,46 +228,34 @@ def plan_channels(
     now: datetime.datetime | None = None,
 ) -> list[ChannelRecommendation]:
     now = now or datetime.datetime.now()
-    assigned: dict[str, int] = {}
-    recommendations: list[ChannelRecommendation] = []
+    known = [r for r in own_records if r.channel is not None]
+    dfs_penalties = {r.bssid: dfs_penalty_for(r.host, now) for r in known}
 
-    for record in sorted(own_records, key=lambda r: r.bssid):
-        if record.channel is None:
+    recommendations_by_bssid: dict[str, ChannelRecommendation] = {}
+    for band, candidates in (("24g", candidates_24g), ("5g", candidates_5g)):
+        band_records = [r for r in known if band_of_channel(r.channel) == band]
+        if not band_records:
             continue
-        band = band_of_channel(record.channel)
-        candidates = candidates_24g if band == "24g" else candidates_5g
-        dfs_penalty = dfs_penalty_for(record.host, now)
+        best = _best_band_assignment(band_records, band, candidates, trusted_external, dfs_channels, dfs_penalties)
 
-        current_cost = _candidate_cost(
-            record.channel, band, assigned, trusted_external, dfs_channels, dfs_penalty
-        )
-        best_channel = record.channel
-        best_cost = current_cost
-        for candidate in candidates:
-            if candidate == record.channel:
-                continue
-            cost = _candidate_cost(candidate, band, assigned, trusted_external, dfs_channels, dfs_penalty)
-            if cost < best_cost:
-                best_cost = cost
-                best_channel = candidate
+        for record in band_records:
+            recommended = best[record.bssid]
+            others = {bssid: channel for bssid, channel in best.items() if bssid != record.bssid}
 
-        if best_channel == record.channel:
-            reason = ""
-        else:
-            reason = _build_reason(
-                record.channel, best_channel, band, assigned, trusted_external, dfs_channels
-            )
+            if recommended == record.channel:
+                reason = ""
+            else:
+                reason = _build_reason(
+                    record.channel, recommended, band, others, trusted_external, dfs_channels
+                )
 
-        assigned[record.bssid] = best_channel
-        recommendations.append(
-            ChannelRecommendation(
+            recommendations_by_bssid[record.bssid] = ChannelRecommendation(
                 bssid=record.bssid,
                 essid=record.essid,
                 current_channel=record.channel,
-                recommended_channel=best_channel,
+                recommended_channel=recommended,
                 reason=reason,
                 host=record.host,
             )
-        )
 
-    return recommendations
+    return [recommendations_by_bssid[bssid] for bssid in sorted(recommendations_by_bssid)]

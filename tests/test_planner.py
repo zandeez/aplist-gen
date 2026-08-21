@@ -184,6 +184,31 @@ def test_plan_channels_heavy_dfs_penalty_changes_the_outcome_vs_default():
     assert heavy_recs[0].recommended_channel == 36
 
 
+def test_plan_channels_global_search_sends_cheaper_penalty_radio_to_dfs():
+    # Two radios collide on a DFS channel; every non-DFS pair is congested
+    # by external networks. Global minimum is to move the EXPENSIVE-penalty
+    # radio (.78, heavy window) off DFS and let the CHEAP-penalty radio
+    # (.80, default) keep it -- moving the other way, or moving both,
+    # costs strictly more in total. .78 sorts before .80 alphabetically by
+    # bssid, so this also confirms the outcome isn't just an artifact of
+    # processing order.
+    now = datetime.datetime(2026, 8, 21, 10, 0)  # .78's heavy-penalty window
+    own_records = [
+        APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=52, host="192.0.2.78"),
+        APRecord(bssid="AA:AA:AA:AA:AA:02", essid="My Network", channel=52, host="192.0.2.80"),
+    ]
+    external = [
+        ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="Neighbour1", channel=36, rssi=-40),
+        ScanEntry(bssid="DE:AD:BE:EF:00:02", essid="Neighbour2", channel=44, rssi=-40),
+    ]
+
+    recs = plan_channels(own_records, external, CANDIDATES_24G, CANDIDATES_5G, DFS_CHANNELS, now=now)
+
+    by_host = {rec.host: rec for rec in recs}
+    assert by_host["192.0.2.78"].recommended_channel not in DFS_CHANNELS
+    assert by_host["192.0.2.80"].recommended_channel == 52
+
+
 def test_plan_channels_host_without_critical_window_always_uses_default_penalty():
     own_records = [APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=100, host="192.0.2.80")]
     external = [
