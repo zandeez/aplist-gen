@@ -1,10 +1,22 @@
 stages:
+  - test
   - build
   - manifest
 
 variables:
   STORAGE_DRIVER: vfs
   BUILDAH_FORMAT: docker
+
+test:
+  stage: test
+  image: python:3.12-slim
+  before_script:
+    - pip install --no-cache-dir uv
+  script:
+    - uv sync --frozen
+    - uv run pytest -v
+  rules:
+    - if: '$CI_COMMIT_BRANCH'
 
 # Native per-architecture builds on GitLab's own arm64/amd64 SaaS runners
 # (saas-linux-small-arm64/-amd64, available on the Free tier) rather than
