@@ -744,29 +744,28 @@ git commit -m "feat: add channel scoring and greedy assignment planner"
 sudo apt install snmp   # or your distro's equivalent
 ```
 
-- [ ] **Step 2: Walk the whole My Network private-enterprise MIB branch on one AP to find candidate tables**
+- [ ] **Step 2: Verify the candidate neighbor-scan OIDs against a live AP**
 
-The existing own-radio OIDs (in `poller.py`) all live under `1.3.6.1.4.1.8744.5.4`. Walk that whole branch and look for a table with noticeably *more* rows than the AP has radios/VAPs — that's the RF neighbor-scan table (one row per detected device, not per own-radio VAP):
+The AP hardware is Colubris (rebadged as HP MSM), and the same `COLUBRIS-802DOT11-MIB` module that defines `poller.py`'s existing own-radio OIDs (all under `1.3.6.1.4.1.8744.5.4`) also defines a `coDot11ScanTable` — exactly the RF neighbor-scan table needed here, with `MacAddress`/`Channel`/`SSID`/`SignalLevel` (units: dBm) columns, indexed the same `{ifIndex, scanIndex}` way as the existing association table. Deriving its numeric OID the same way `poller.py`'s existing constants derive from that MIB (cross-checked against two of them — `coDot11ap` → `8744.5.4.1` matches `BSSID_OID`'s prefix, `coDot11phy` → `8744.5.4.3` matches `CHAN_5G_OID`'s prefix) gives these candidates:
+
+- BSSID (`coDot11ScanMacAddress`): `1.3.6.1.4.1.8744.5.4.1.7.1.2`
+- Channel (`coDot11ScanChannel`): `1.3.6.1.4.1.8744.5.4.1.7.1.3`
+- ESSID (`coDot11ScanSSID`): `1.3.6.1.4.1.8744.5.4.1.7.1.4`
+- Signal level / RSSI, dBm (`coDot11ScanSignalLevel`): `1.3.6.1.4.1.8744.5.4.1.7.1.5`
+
+These are high-confidence, not certain — the MIB source is dated 2008 and firmware revisions can drift. Verify with one targeted walk before trusting them:
 
 ```bash
-snmpwalk -v2c -c <community> 192.0.2.80 1.3.6.1.4.1.8744.5.4
+snmpwalk -v2c -c <community> 192.0.2.80 1.3.6.1.4.1.8744.5.4.1.7
 ```
 
 (Substitute the real SNMP community — `nomad var get nomad/jobs/aplist-gen` on the Nomad cluster, or ask whoever set it up.)
 
-- [ ] **Step 3: Identify the four columns needed**
+Expected: rows for detected nearby devices — likely more rows than the AP has radios/VAPs, since this is one row per detected device, not per own-radio VAP. If the walk returns nothing or clearly wrong-shaped data (e.g. no plausible MAC-address-like octet strings under `.2`), fall back to walking the whole `1.3.6.1.4.1.8744.5.4` branch and searching for a table matching that shape instead — the exact numeric suffix may have shifted on this firmware revision, but the column layout (MAC, channel, SSID, signal level in that relative order within the entry) should still hold.
 
-Within the neighbor-scan table found in Step 2, identify the base OIDs for:
-- BSSID (raw octet string, same shape as `poller.py`'s `BSSID_OID`)
-- ESSID (string)
-- Channel (integer)
-- Signal strength / RSSI (integer, usually negative dBm)
+- [ ] **Step 3: Implement `neighbor_scan.py` with the verified OIDs**
 
-Confirm the table rows share one suffix scheme (i.e. the same trailing OID suffix identifies the same detected device across all four columns) — if it doesn't (e.g. BSSID/ESSID are keyed differently from channel/RSSI, mirroring how `poller.py`'s own-radio tables are keyed by `<radio>.<vap>` for BSSID/ESSID but `<radio>` alone for channel), you will need to adjust the row-matching logic in Step 4 below to bridge the different suffix schemes, the same way `parse_own_radio_tables` does — `parse_neighbor_scan_table` (Task 3) already expects four independent `suffix -> value` dicts, so as long as you can produce those four dicts here, its interface still works.
-
-- [ ] **Step 4: Implement `neighbor_scan.py` with the discovered OIDs**
-
-Create `src/aplist_gen/neighbor_scan.py`, filling in the four OID constants with the real values found in Step 3:
+Create `src/aplist_gen/neighbor_scan.py`, using the OIDs confirmed in Step 2 (adjust the four constants below if Step 2's fallback found different values):
 
 ```python
 import asyncio
@@ -777,13 +776,14 @@ from pysnmp.hlapi.v3arch.asyncio import SnmpEngine, UdpTransportTarget
 from aplist_gen.core import ScanEntry, parse_neighbor_scan_table
 from aplist_gen.snmp_utils import format_bssid, walk_bounded
 
-# Discovered via live snmpwalk against an My Network HP MSM AP -- see Task 6
-# of docs/superpowers/plans/2026-08-21-channel-planning.md for how these
-# were derived.
-NEIGHBOR_BSSID_OID = "<fill in from Step 3>"
-NEIGHBOR_ESSID_OID = "<fill in from Step 3>"
-NEIGHBOR_CHANNEL_OID = "<fill in from Step 3>"
-NEIGHBOR_RSSI_OID = "<fill in from Step 3>"
+# coDot11ScanTable from COLUBRIS-802DOT11-MIB, verified via live snmpwalk
+# against an My Network HP MSM AP -- see Task 6 of
+# docs/superpowers/plans/2026-08-21-channel-planning.md for how these
+# were derived and verified.
+NEIGHBOR_BSSID_OID = "1.3.6.1.4.1.8744.5.4.1.7.1.2"
+NEIGHBOR_CHANNEL_OID = "1.3.6.1.4.1.8744.5.4.1.7.1.3"
+NEIGHBOR_ESSID_OID = "1.3.6.1.4.1.8744.5.4.1.7.1.4"
+NEIGHBOR_RSSI_OID = "1.3.6.1.4.1.8744.5.4.1.7.1.5"
 
 
 async def poll_neighbors(host: str, community: str, own_essid: str, timeout: int = 3, retries: int = 1) -> list[ScanEntry]:
@@ -828,7 +828,7 @@ async def poll_all_neighbors(hosts: list[str], community: str, own_essid: str) -
 
 Add `import asyncio` and `import sys` to the top of the file alongside the `pysnmp`/`aplist_gen` imports.
 
-- [ ] **Step 5: Verify against a live AP**
+- [ ] **Step 4: Confirm end-to-end against a live AP**
 
 ```bash
 uv run python -c "
@@ -840,7 +840,7 @@ print(asyncio.run(poll_neighbors('192.0.2.80', '<community>', 'My Network')))
 
 Expected: a list of `ScanEntry` for nearby non-"My Network" networks (or an empty list if none are currently in range — not an error).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/aplist_gen/neighbor_scan.py
