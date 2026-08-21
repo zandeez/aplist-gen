@@ -66,3 +66,19 @@ def test_plan_channels_skips_records_with_unknown_channel():
     recs = plan_channels(own_records, [], CANDIDATES_24G, CANDIDATES_5G, DFS_CHANNELS)
 
     assert recs == []
+
+
+def test_plan_channels_reason_mentions_dfs_when_move_has_no_interference_contributors():
+    # Sole AP, no cluster/external interference at all -- the only reason
+    # to move off its DFS current channel is the DFS penalty itself, so
+    # the reason must say that rather than falling back to the generic
+    # "lower overall interference cost" string.
+    own_records = [APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=52)]
+
+    recs = plan_channels(own_records, [], CANDIDATES_24G, CANDIDATES_5G, DFS_CHANNELS)
+
+    rec = recs[0]
+    assert rec.current_channel == 52
+    assert rec.recommended_channel not in DFS_CHANNELS
+    assert "DFS" in rec.reason
+    assert rec.reason != "lower overall interference cost"

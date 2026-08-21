@@ -98,14 +98,26 @@ def _contributors(
 
 def _build_reason(
     current_channel: int,
+    recommended_channel: int,
     band: str,
     assigned: dict[str, int],
     trusted_external: list[ScanEntry],
+    dfs_channels: set[int],
 ) -> str:
+    parts: list[str] = []
+    # A DFS-to-non-DFS move can be driven purely by DFS_PENALTY with zero
+    # interference contributors -- say so explicitly rather than falling
+    # through to the generic cost string, which would misattribute the
+    # move to unspecified interference. A DFS-to-DFS move isn't "avoiding
+    # DFS", so only the interference-contributor reasoning applies there.
+    if current_channel in dfs_channels and recommended_channel not in dfs_channels:
+        parts.append(f"channel {current_channel} is a DFS channel (radar-vacate risk)")
     contributors = _contributors(current_channel, band, assigned, trusted_external)
-    if not contributors:
+    if contributors:
+        parts.append(f"channel {current_channel} overlaps " + "; ".join(contributors))
+    if not parts:
         return "lower overall interference cost"
-    return f"channel {current_channel} overlaps " + "; ".join(contributors)
+    return "; ".join(parts)
 
 
 def plan_channels(
@@ -138,7 +150,9 @@ def plan_channels(
         if best_channel == record.channel:
             reason = ""
         else:
-            reason = _build_reason(record.channel, band, assigned, trusted_external)
+            reason = _build_reason(
+                record.channel, best_channel, band, assigned, trusted_external, dfs_channels
+            )
 
         assigned[record.bssid] = best_channel
         recommendations.append(
