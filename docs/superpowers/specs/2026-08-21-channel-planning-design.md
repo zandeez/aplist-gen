@@ -184,3 +184,16 @@ poll_all(AP_HOSTS)              poll_all_neighbors(AP_HOSTS, own_essid)
 - DFS radar-vacate handling: once `--apply` exists, track forced
   channel-vacate events and CAC timing so automation doesn't fight the
   AP's own radar-safety behavior.
+- **5GHz channel-width awareness** (known limitation, flagged in final
+  review of the phase 1 implementation): `_overlap_units` in `planner.py`
+  only treats two 5GHz channels as overlapping when they're identical,
+  which implicitly assumes every 5GHz radio runs 20MHz channels. At
+  40MHz or 80MHz bonding, channels the scorer treats as independent
+  (e.g. 36/40, or the whole 36-48 block at 80MHz) actually overlap or are
+  literally the same channel — so a `plan` recommendation could collapse
+  a well-separated cluster onto one bonded block if a radio is running
+  wider than 20MHz. Fixing this properly needs a new per-radio
+  channel-width SNMP OID, discovered the same way Task 6 discovered the
+  neighbor-scan OIDs. Until that's done: **do not act on a `plan` 5GHz
+  recommendation without first manually confirming the affected radios'
+  configured channel width is 20MHz.**
