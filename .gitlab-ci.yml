@@ -1,0 +1,59 @@
+stages:
+  - build
+  - manifest
+
+variables:
+  STORAGE_DRIVER: vfs
+  BUILDAH_FORMAT: docker
+
+# Native per-architecture builds on GitLab's own arm64/amd64 SaaS runners
+# (saas-linux-small-arm64/-amd64, available on the Free tier) rather than
+# QEMU emulation on a single amd64 runner — GitLab's own recommended
+# pattern for multi-arch buildah pipelines, and avoids the emulation
+# slowdown.
+.build_arch:
+  stage: build
+  image: quay.io/buildah/stable
+  before_script:
+    - buildah login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - buildah build --storage-driver="$STORAGE_DRIVER" --platform="linux/$ARCH" -f Containerfile -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA-$ARCH" .
+    - buildah push --storage-driver="$STORAGE_DRIVER" "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA-$ARCH"
+  rules:
+    - if: '$CI_COMMIT_BRANCH'
+
+build-amd64:
+  extends: .build_arch
+  tags:
+    - saas-linux-small-amd64
+  variables:
+    ARCH: amd64
+
+build-arm64:
+  extends: .build_arch
+  tags:
+    - saas-linux-small-arm64
+  variables:
+    ARCH: arm64
+
+# Combines the two arch-specific images pushed above into one multi-arch
+# manifest per tag, so `podman pull $CI_REGISTRY_IMAGE:<tag>` on either
+# architecture transparently gets the right image.
+manifest:
+  stage: manifest
+  image: quay.io/buildah/stable
+  needs:
+    - build-amd64
+    - build-arm64
+  before_script:
+    - buildah login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - |
+      for tag in "$CI_COMMIT_SHORT_SHA" "$CI_COMMIT_REF_SLUG"; do
+        buildah manifest create "$CI_REGISTRY_IMAGE:$tag"
+        buildah manifest add "$CI_REGISTRY_IMAGE:$tag" "docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA-amd64"
+        buildah manifest add "$CI_REGISTRY_IMAGE:$tag" "docker://$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA-arm64"
+        buildah manifest push --all "$CI_REGISTRY_IMAGE:$tag" "docker://$CI_REGISTRY_IMAGE:$tag"
+      done
+  rules:
+    - if: '$CI_COMMIT_BRANCH'
