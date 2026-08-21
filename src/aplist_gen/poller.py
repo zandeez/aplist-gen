@@ -42,4 +42,4 @@ async def poll_ap(host: str, community: str, timeout: int = 3, retries: int = 1)
     essids = {k: v.prettyPrint() for k, v in raw_essids.items()}
     channels = {k: v.prettyPrint() for k, v in raw_channels.items()}
 
-    return parse_own_radio_tables(bssids, essids, channels)
+    return parse_own_radio_tables(bssids, essids, channels, host=host)

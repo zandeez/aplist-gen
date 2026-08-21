@@ -56,12 +56,22 @@ def test_parse_own_radio_tables_joins_by_radio_and_vap_suffix():
     essids = {"4.1": "My Network", "5.1": "My Network"}
     channels = {"4": "100", "5": "13"}
 
-    records = parse_own_radio_tables(bssids, essids, channels)
+    records = parse_own_radio_tables(bssids, essids, channels, host="192.0.2.80")
 
     assert records == [
-        APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=100),
-        APRecord(bssid="AA:AA:AA:AA:AA:02", essid="My Network", channel=13),
+        APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=100, host="192.0.2.80"),
+        APRecord(bssid="AA:AA:AA:AA:AA:02", essid="My Network", channel=13, host="192.0.2.80"),
     ]
+
+
+def test_parse_own_radio_tables_host_defaults_to_none():
+    bssids = {"4.1": "AA:AA:AA:AA:AA:01"}
+    essids = {"4.1": "My Network"}
+    channels = {"4": "100"}
+
+    records = parse_own_radio_tables(bssids, essids, channels)
+
+    assert records[0].host is None
 
 
 def test_parse_own_radio_tables_skips_vap_with_no_channel_for_its_radio():

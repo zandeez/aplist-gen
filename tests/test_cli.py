@@ -53,6 +53,37 @@ def test_print_plan_report_recommends_change(capsys):
     assert "overlaps cluster AP" in out
 
 
+def test_print_plan_report_includes_host_when_known(capsys):
+    rec = ChannelRecommendation(
+        bssid="AA:AA:AA:AA:AA:01",
+        essid="My Network",
+        current_channel=6,
+        recommended_channel=6,
+        reason="",
+        host="192.0.2.80",
+    )
+
+    print_plan_report([rec])
+
+    out = capsys.readouterr().out
+    assert "192.0.2.80" in out
+
+
+def test_print_plan_report_omits_host_prefix_when_unknown(capsys):
+    rec = ChannelRecommendation(
+        bssid="AA:AA:AA:AA:AA:01",
+        essid="My Network",
+        current_channel=6,
+        recommended_channel=6,
+        reason="",
+    )
+
+    print_plan_report([rec])
+
+    out = capsys.readouterr().out
+    assert "None" not in out
+
+
 def test_main_plan_without_ap_hosts_exits_1(monkeypatch, capsys):
     monkeypatch.delenv("AP_HOSTS", raising=False)
 

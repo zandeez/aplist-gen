@@ -39,11 +39,12 @@ async def _gather_plan_data(
 
 def print_plan_report(recommendations: list[ChannelRecommendation]) -> None:
     for rec in recommendations:
+        prefix = f"{rec.host} " if rec.host is not None else ""
         if rec.recommended_channel == rec.current_channel:
-            print(f"{rec.bssid} {rec.essid!r}: channel {rec.current_channel} (no change)")
+            print(f"{prefix}{rec.bssid} {rec.essid!r}: channel {rec.current_channel} (no change)")
         else:
             print(
-                f"{rec.bssid} {rec.essid!r}: channel {rec.current_channel} -> "
+                f"{prefix}{rec.bssid} {rec.essid!r}: channel {rec.current_channel} -> "
                 f"{rec.recommended_channel} ({rec.reason})"
             )
 

@@ -1,3 +1,4 @@
+import datetime
 from dataclasses import dataclass
 
 from aplist_gen.core import APRecord, ScanEntry
@@ -20,6 +21,33 @@ CANDIDATES_5G: list[int] = NON_DFS_5G + sorted(DFS_CHANNELS)
 CO_CHANNEL_WEIGHT = 10.0
 DFS_PENALTY = 15.0
 UNKNOWN_SIGNAL_WEIGHT = 0.5
+MAX_REASON_CONTRIBUTORS = 3
+
+# All radios in this cluster are confirmed running 40MHz HT channel bonding
+# (there's no live SNMP field for a radio's own configured channel width on
+# this hardware/firmware -- see poller.py). Two 20MHz primaries in the same
+# bonded pair are the same physical channel and must score as a full
+# overlap, not as independent candidates.
+CHANNEL_40MHZ_PAIRS: dict[int, int] = {
+    36: 40, 40: 36,
+    44: 48, 48: 44,
+    52: 56, 56: 52,
+    60: 64, 64: 60,
+    100: 104, 104: 100,
+    108: 112, 112: 108,
+    116: 120, 120: 116,
+    124: 128, 128: 124,
+    132: 136, 136: 132,
+}
+
+# Very heavy (but not absolute) DFS avoidance for specific APs during the
+# hours a radar-vacate would disrupt them most -- half-open [start, end)
+# local hours.
+DFS_HEAVY_PENALTY = 60.0
+CRITICAL_DFS_HOST_WINDOWS: dict[str, tuple[int, int]] = {
+    "192.0.2.78": (6, 18),  # day
+    "192.0.2.149": (18, 23),  # evening
+}
 
 
 @dataclass(frozen=True)
@@ -29,6 +57,7 @@ class ChannelRecommendation:
     current_channel: int
     recommended_channel: int
     reason: str
+    host: str | None = None
 
 
 def band_of_channel(channel: int) -> str:
@@ -39,6 +68,8 @@ def _overlap_units(channel_a: int, channel_b: int, band: str) -> int:
     diff = abs(channel_a - channel_b)
     if band == "24g":
         return max(0, 5 - diff)
+    if CHANNEL_40MHZ_PAIRS.get(channel_a) == channel_b:
+        return 5
     return 5 if diff == 0 else 0
 
 
@@ -52,12 +83,23 @@ def _signal_weight(rssi: int | None) -> float:
     return max(0.1, min(1.5, (rssi + 100) / 60))
 
 
+def dfs_penalty_for(host: str | None, now: datetime.datetime) -> float:
+    window = CRITICAL_DFS_HOST_WINDOWS.get(host) if host is not None else None
+    if window is None:
+        return DFS_PENALTY
+    start, end = window
+    if start <= now.hour < end:
+        return DFS_HEAVY_PENALTY
+    return DFS_PENALTY
+
+
 def _candidate_cost(
     candidate: int,
     band: str,
     assigned: dict[str, int],
     trusted_external: list[ScanEntry],
     dfs_channels: set[int],
+    dfs_penalty: float,
 ) -> float:
     cost = 0.0
     for other_channel in assigned.values():
@@ -69,7 +111,7 @@ def _candidate_cost(
             continue
         cost += cluster_overlap_cost(candidate, sighting.channel, band) * _signal_weight(sighting.rssi)
     if candidate in dfs_channels:
-        cost += DFS_PENALTY
+        cost += dfs_penalty
     return cost
 
 
@@ -78,20 +120,22 @@ def _contributors(
     band: str,
     assigned: dict[str, int],
     trusted_external: list[ScanEntry],
-) -> list[str]:
-    contributors: list[str] = []
+) -> list[tuple[str, float]]:
+    contributors: list[tuple[str, float]] = []
     for other_bssid, other_channel in assigned.items():
         if band_of_channel(other_channel) != band:
             continue
-        if cluster_overlap_cost(channel, other_channel, band) > 0:
-            contributors.append(f"cluster AP {other_bssid} on channel {other_channel}")
+        cost = cluster_overlap_cost(channel, other_channel, band)
+        if cost > 0:
+            contributors.append((f"cluster AP {other_bssid} on channel {other_channel}", cost))
     for sighting in trusted_external:
         if band_of_channel(sighting.channel) != band:
             continue
-        if cluster_overlap_cost(channel, sighting.channel, band) > 0:
+        cost = cluster_overlap_cost(channel, sighting.channel, band) * _signal_weight(sighting.rssi)
+        if cost > 0:
             rssi_text = f" ({sighting.rssi}dBm)" if sighting.rssi is not None else ""
             contributors.append(
-                f"external network '{sighting.essid}'{rssi_text} on channel {sighting.channel}"
+                (f"external network '{sighting.essid}'{rssi_text} on channel {sighting.channel}", cost)
             )
     return contributors
 
@@ -114,7 +158,16 @@ def _build_reason(
         parts.append(f"channel {current_channel} is a DFS channel (radar-vacate risk)")
     contributors = _contributors(current_channel, band, assigned, trusted_external)
     if contributors:
-        parts.append(f"channel {current_channel} overlaps " + "; ".join(contributors))
+        # In a busy area this list can run into the dozens -- show the
+        # worst offenders by cost and summarize the rest, or the reason
+        # stops being auditable and just becomes a wall of text.
+        contributors.sort(key=lambda c: c[1], reverse=True)
+        shown = [description for description, _ in contributors[:MAX_REASON_CONTRIBUTORS]]
+        remainder = len(contributors) - len(shown)
+        text = f"channel {current_channel} overlaps " + "; ".join(shown)
+        if remainder > 0:
+            text += f"; and {remainder} more"
+        parts.append(text)
     if not parts:
         return "lower overall interference cost"
     return "; ".join(parts)
@@ -126,7 +179,9 @@ def plan_channels(
     candidates_24g: list[int],
     candidates_5g: list[int],
     dfs_channels: set[int],
+    now: datetime.datetime | None = None,
 ) -> list[ChannelRecommendation]:
+    now = now or datetime.datetime.now()
     assigned: dict[str, int] = {}
     recommendations: list[ChannelRecommendation] = []
 
@@ -135,14 +190,17 @@ def plan_channels(
             continue
         band = band_of_channel(record.channel)
         candidates = candidates_24g if band == "24g" else candidates_5g
+        dfs_penalty = dfs_penalty_for(record.host, now)
 
-        current_cost = _candidate_cost(record.channel, band, assigned, trusted_external, dfs_channels)
+        current_cost = _candidate_cost(
+            record.channel, band, assigned, trusted_external, dfs_channels, dfs_penalty
+        )
         best_channel = record.channel
         best_cost = current_cost
         for candidate in candidates:
             if candidate == record.channel:
                 continue
-            cost = _candidate_cost(candidate, band, assigned, trusted_external, dfs_channels)
+            cost = _candidate_cost(candidate, band, assigned, trusted_external, dfs_channels, dfs_penalty)
             if cost < best_cost:
                 best_cost = cost
                 best_channel = candidate
@@ -162,6 +220,7 @@ def plan_channels(
                 current_channel=record.channel,
                 recommended_channel=best_channel,
                 reason=reason,
+                host=record.host,
             )
         )
 
