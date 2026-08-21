@@ -28,13 +28,12 @@ def filter_cluster_aps(entries: list[ScanEntry], target_essid: str) -> list[APRe
 def parse_own_radio_tables(
     bssids: dict[str, str],
     essids: dict[str, str],
-    chan_5g: dict[str, str],
-    chan_24g: dict[str, str],
+    channels: dict[str, str],
 ) -> list[APRecord]:
     records: list[APRecord] = []
     for suffix in sorted(bssids):
         radio = suffix.split(".", 1)[0]
-        channel = chan_5g.get(radio) or chan_24g.get(radio)
+        channel = channels.get(radio)
         if channel is None:
             continue
         records.append(

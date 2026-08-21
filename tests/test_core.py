@@ -48,15 +48,15 @@ def test_filter_cluster_aps_dedupes_by_bssid():
 
 def test_parse_own_radio_tables_joins_by_radio_and_vap_suffix():
     # Modeled on a real live poll of an HP MSM560: BSSID/ESSID tables are
-    # keyed by "<radio>.<vap>", channel tables by "<radio>" alone, and only
-    # one of the two channel tables has an entry for a given radio (5GHz vs
-    # 2.4GHz radios live in genuinely separate MIB branches on this MIB).
+    # keyed by "<radio>.<vap>", the current-channel table by "<radio>"
+    # alone -- one unified table for both bands (coDot11CurrentOperFrequency),
+    # not a 5GHz/24GHz split (that split table was found to silently omit a
+    # radio mid-DFS-CAC on live hardware).
     bssids = {"4.1": "AA:AA:AA:AA:AA:01", "5.1": "AA:AA:AA:AA:AA:02"}
     essids = {"4.1": "My Network", "5.1": "My Network"}
-    chan_5g = {"4": "100"}
-    chan_24g = {"5": "13"}
+    channels = {"4": "100", "5": "13"}
 
-    records = parse_own_radio_tables(bssids, essids, chan_5g, chan_24g)
+    records = parse_own_radio_tables(bssids, essids, channels)
 
     assert records == [
         APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=100),
@@ -68,7 +68,7 @@ def test_parse_own_radio_tables_skips_vap_with_no_channel_for_its_radio():
     bssids = {"6.1": "AA:AA:AA:AA:AA:03"}
     essids = {"6.1": "My Network"}
 
-    records = parse_own_radio_tables(bssids, essids, chan_5g={}, chan_24g={})
+    records = parse_own_radio_tables(bssids, essids, channels={})
 
     assert records == []
 
