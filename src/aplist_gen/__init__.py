@@ -48,6 +48,18 @@ def print_plan_report(recommendations: list[ChannelRecommendation]) -> None:
             )
 
 
+def _read_ap_config() -> tuple[list[str], str, str] | None:
+    hosts = [h.strip() for h in os.environ.get("AP_HOSTS", "").split(",") if h.strip()]
+    community = os.environ.get("SNMP_COMMUNITY", "public")
+    target_essid = os.environ.get("TARGET_ESSID", "My Network")
+
+    if not hosts:
+        print("error: AP_HOSTS is not set (comma-separated list of AP IPs)", file=sys.stderr)
+        return None
+
+    return hosts, community, target_essid
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate aplist.xml from live AP SNMP state")
     parser.add_argument(
@@ -64,14 +76,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def run_generate(args: argparse.Namespace) -> int:
-    hosts = [h.strip() for h in os.environ.get("AP_HOSTS", "").split(",") if h.strip()]
-    community = os.environ.get("SNMP_COMMUNITY", "public")
-    output_path = os.environ.get("OUTPUT_PATH", "aplist.xml")
-    target_essid = os.environ.get("TARGET_ESSID", "My Network")
-
-    if not hosts:
-        print("error: AP_HOSTS is not set (comma-separated list of AP IPs)", file=sys.stderr)
+    config = _read_ap_config()
+    if config is None:
         return 1
+    hosts, community, target_essid = config
+    output_path = os.environ.get("OUTPUT_PATH", "aplist.xml")
 
     records = asyncio.run(poll_all(hosts, community))
     records = [r for r in records if r.essid == target_essid]
@@ -96,14 +105,11 @@ def run_generate(args: argparse.Namespace) -> int:
 
 
 def run_plan(args: argparse.Namespace) -> int:
-    hosts = [h.strip() for h in os.environ.get("AP_HOSTS", "").split(",") if h.strip()]
-    community = os.environ.get("SNMP_COMMUNITY", "public")
-    target_essid = os.environ.get("TARGET_ESSID", "My Network")
-    cache_path = Path(os.environ.get("PLAN_CACHE_PATH", "plan_cache.json"))
-
-    if not hosts:
-        print("error: AP_HOSTS is not set (comma-separated list of AP IPs)", file=sys.stderr)
+    config = _read_ap_config()
+    if config is None:
         return 1
+    hosts, community, target_essid = config
+    cache_path = Path(os.environ.get("PLAN_CACHE_PATH", "plan_cache.json"))
 
     own_records, external_sightings = asyncio.run(_gather_plan_data(hosts, community, target_essid))
     own_records = [r for r in own_records if r.essid == target_essid]
