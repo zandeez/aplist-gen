@@ -11,15 +11,14 @@ job "aplist-plan" {
   }
 
   group "aplist-plan" {
-    # TODO: create this host volume on the Nomad client before first
-    # deploy. It holds only the small trust-cache JSON file (BSSID ->
-    # seen-count) used to require repeat sightings before trusting an
-    # external network -- not the served aplist.xml, which stays on
-    # aplist-gen's separate "aplist-web" volume.
+    # Host volume "aplist-cache" -- holds only the small trust-cache JSON
+    # file (BSSID -> seen-count) used to require repeat sightings before
+    # trusting an external network -- not the served aplist.xml, which
+    # stays on aplist-gen's separate "aplist-web" volume.
     volume "aplist-plan-cache" {
       type      = "host"
       read_only = false
-      source    = "aplist-plan-cache"
+      source    = "aplist-cache"
     }
 
     # Same host volume aplist-gen.nomad.hcl serves aplist.xml from -- the
