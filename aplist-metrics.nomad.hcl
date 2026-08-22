@@ -25,11 +25,15 @@ job "aplist-metrics" {
         AP_HOSTS     = "192.0.2.80,192.0.2.149,192.0.2.78"
         TARGET_ESSID = "My Network"
         # Single-node cluster (confirmed 2026-08-22): aplist-metrics and
-        # victoria-metrics run on the same host, so a plain localhost
-        # address to victoria-metrics's static port is reliable without
-        # needing Nomad service-discovery DNS. Revisit if this cluster
-        # ever goes multi-node.
-        METRICS_URL  = "http://127.0.0.1:8428/api/v1/import/prometheus"
+        # victoria-metrics run on the same host. NOT 127.0.0.1 though --
+        # victoria-metrics's group `network { port }` stanza uses Nomad's
+        # bridge/CNI networking, which DNAT-publishes the static port only
+        # on the node's advertised LAN address (192.0.2.1), not on
+        # loopback -- confirmed live 2026-08-22 (`ss -tlnp` showed the
+        # listener bound to 192.0.2.1:8428 only). Revisit if this
+        # cluster ever goes multi-node or victoria-metrics's job switches
+        # to host networking.
+        METRICS_URL  = "http://192.0.2.1:8428/api/v1/import/prometheus"
       }
 
       # SNMP community pulled from a Nomad variable, not a flat file or
