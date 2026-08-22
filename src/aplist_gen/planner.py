@@ -20,6 +20,13 @@ DFS_CHANNELS: set[int] = {
 CANDIDATES_5G: list[int] = NON_DFS_5G + sorted(DFS_CHANNELS)
 
 CO_CHANNEL_WEIGHT = 10.0
+
+# Own-cluster APs interfering with each other counts for more than the same
+# amount of external interference: your clients actively roam between your
+# own APs (real hand-off contention), where next-door's network is just RF
+# noise nobody ever associates to. Ratio confirmed with Andrew 2026-08-22.
+CLUSTER_OVERLAP_WEIGHT = CO_CHANNEL_WEIGHT * 2
+
 DFS_PENALTY = 15.0
 UNKNOWN_SIGNAL_WEIGHT = 0.5
 MAX_REASON_CONTRIBUTORS = 3
@@ -75,6 +82,10 @@ def _overlap_units(channel_a: int, channel_b: int, band: str) -> int:
 
 
 def cluster_overlap_cost(channel_a: int, channel_b: int, band: str) -> float:
+    return _overlap_units(channel_a, channel_b, band) * CLUSTER_OVERLAP_WEIGHT
+
+
+def external_overlap_cost(channel_a: int, channel_b: int, band: str) -> float:
     return _overlap_units(channel_a, channel_b, band) * CO_CHANNEL_WEIGHT
 
 
@@ -99,7 +110,7 @@ def _external_cost(candidate: int, band: str, trusted_external: list[ScanEntry])
     for sighting in trusted_external:
         if band_of_channel(sighting.channel) != band:
             continue
-        cost += cluster_overlap_cost(candidate, sighting.channel, band) * _signal_weight(sighting.rssi)
+        cost += external_overlap_cost(candidate, sighting.channel, band) * _signal_weight(sighting.rssi)
     return cost
 
 
@@ -177,7 +188,7 @@ def _contributors(
     for sighting in trusted_external:
         if band_of_channel(sighting.channel) != band:
             continue
-        cost = cluster_overlap_cost(channel, sighting.channel, band) * _signal_weight(sighting.rssi)
+        cost = external_overlap_cost(channel, sighting.channel, band) * _signal_weight(sighting.rssi)
         if cost > 0:
             rssi_text = f" ({sighting.rssi}dBm)" if sighting.rssi is not None else ""
             contributors.append(

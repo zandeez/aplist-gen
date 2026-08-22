@@ -4,11 +4,14 @@ from aplist_gen.core import APRecord, ScanEntry
 from aplist_gen.planner import (
     CANDIDATES_24G,
     CANDIDATES_5G,
+    CLUSTER_OVERLAP_WEIGHT,
+    CO_CHANNEL_WEIGHT,
     DFS_CHANNELS,
     DFS_HEAVY_PENALTY,
     DFS_PENALTY,
     cluster_overlap_cost,
     dfs_penalty_for,
+    external_overlap_cost,
     plan_channels,
 )
 
@@ -123,6 +126,39 @@ def test_plan_channels_reason_caps_contributors_and_shows_remainder_count():
     reason = recs[0].reason
     assert reason.count("external network") == 3
     assert "and 2 more" in reason
+
+
+def test_cluster_overlap_weight_is_double_co_channel_weight():
+    # Own-cluster APs are ~5m apart in this deployment -- interference
+    # between them matters more than the same amount of external
+    # interference, since clients actively roam between your own APs.
+    # Ratio confirmed with Andrew 2026-08-22.
+    assert CLUSTER_OVERLAP_WEIGHT == 2 * CO_CHANNEL_WEIGHT
+
+
+def test_cluster_overlap_costs_more_than_equivalent_external_overlap():
+    assert cluster_overlap_cost(6, 6, "24g") == 2 * external_overlap_cost(6, 6, "24g")
+
+
+def test_plan_channels_uses_the_one_clear_channel_for_only_one_ap():
+    # Two cluster APs, both currently on congested channels, with channel
+    # 11 clear of both external interference and their own conflict. The
+    # globally cheapest move is for exactly one AP to take channel 11 and
+    # the other to stay put and eat its own external congestion alone --
+    # not for both to converge onto 11 and create their own overlap.
+    own_records = [
+        APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=1),
+        APRecord(bssid="AA:AA:AA:AA:AA:02", essid="My Network", channel=6),
+    ]
+    external = [
+        ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="Neighbour1", channel=1, rssi=-40),
+        ScanEntry(bssid="DE:AD:BE:EF:00:02", essid="Neighbour2", channel=6, rssi=-40),
+    ]
+
+    recs = plan_channels(own_records, external, CANDIDATES_24G, CANDIDATES_5G, DFS_CHANNELS)
+
+    recommended = {rec.recommended_channel for rec in recs}
+    assert recommended == {1, 11}
 
 
 def test_cluster_overlap_cost_treats_40mhz_bonded_pair_as_full_overlap():
