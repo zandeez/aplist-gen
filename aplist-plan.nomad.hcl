@@ -35,9 +35,10 @@ job "aplist-plan" {
       driver = "podman"
 
       config {
-        # Same image as aplist-gen -- see its TODO note on pinning a
-        # real tag once the CI pipeline has built one.
-        image = "registry.gitlab.com/zandeez/aplist-gen:main"
+        # TEMPORARY: same locally-built image as aplist-gen -- see its
+        # config block for why (registry auth not yet set up on this
+        # Nomad client for the podman driver).
+        image = "localhost/aplist:latest"
         args  = ["plan"]
       }
 

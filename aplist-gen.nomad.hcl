@@ -23,9 +23,15 @@ job "aplist-gen" {
       driver = "podman"
 
       config {
-        # TODO: pin to a real tag once the CI pipeline has built one —
-        # "main" matches the ref-slug tag the manifest job publishes.
-        image = "registry.gitlab.com/zandeez/aplist-gen:main"
+        # TEMPORARY: locally-built image, not the CI-pushed one --
+        # registry.gitlab.com/zandeez/aplist-gen:main needs registry auth
+        # on this Nomad client (no per-task auth block exists for the
+        # podman driver, unlike the built-in docker driver -- it's plugin-
+        # level client config only). Switch back to the registry image
+        # once that's set up: `podman login registry.gitlab.com` on this
+        # host, or configure the nomad-driver-podman plugin's own `auth`
+        # block in the client's agent config.
+        image = "localhost/aplist:latest"
       }
 
       volume_mount {
