@@ -1,0 +1,50 @@
+import urllib.request
+
+from aplist_gen.core import APRecord, ScanEntry
+
+
+def _band_of_channel(channel: int) -> str:
+    return "24g" if channel <= 14 else "5g"
+
+
+def format_own_radio_metrics(records: list[APRecord]) -> str:
+    lines: list[str] = []
+    for record in records:
+        if record.channel is None:
+            continue
+        host = record.host or ""
+        labels = f'host="{host}",bssid="{record.bssid}",essid="{record.essid}"'
+        lines.append(f"aplist_own_channel{{{labels}}} {record.channel}")
+        if record.num_users is not None:
+            lines.append(f"aplist_connected_users{{{labels}}} {record.num_users}")
+    return "".join(line + "\n" for line in lines)
+
+
+def format_neighbor_metrics(sightings: list[ScanEntry]) -> str:
+    counts: dict[int, int] = {}
+    max_rssi: dict[int, int] = {}
+    for sighting in sightings:
+        counts[sighting.channel] = counts.get(sighting.channel, 0) + 1
+        if sighting.rssi is not None:
+            max_rssi[sighting.channel] = max(max_rssi.get(sighting.channel, sighting.rssi), sighting.rssi)
+
+    lines: list[str] = []
+    for channel in sorted(counts):
+        band = _band_of_channel(channel)
+        labels = f'channel="{channel}",band="{band}"'
+        lines.append(f"aplist_external_network_count{{{labels}}} {counts[channel]}")
+        if channel in max_rssi:
+            lines.append(f"aplist_external_signal_dbm_max{{{labels}}} {max_rssi[channel]}")
+    return "".join(line + "\n" for line in lines)
+
+
+def format_poll_failures(hosts: list[str], failed_hosts: list[str]) -> str:
+    failed = set(failed_hosts)
+    lines = [f'aplist_poll_failure{{host="{host}"}} {1 if host in failed else 0}' for host in hosts]
+    return "".join(line + "\n" for line in lines)
+
+
+def push_metrics(url: str, text: str) -> None:
+    request = urllib.request.Request(url, data=text.encode("utf-8"), method="POST")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        response.read()
