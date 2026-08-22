@@ -196,3 +196,24 @@ def test_parse_neighbor_scan_table_falls_back_to_none_rssi_when_unparseable():
     assert entries == [
         ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="NeighboursWifi", channel=44, rssi=None)
     ]
+
+
+def test_parse_own_radio_tables_includes_num_users():
+    bssids = {"4.1": "AA:AA:AA:AA:AA:01"}
+    essids = {"4.1": "My Network"}
+    channels = {"4": "100"}
+    users = {"4": "3"}
+
+    records = parse_own_radio_tables(bssids, essids, channels, users=users)
+
+    assert records[0].num_users == 3
+
+
+def test_parse_own_radio_tables_num_users_defaults_to_none_when_missing():
+    bssids = {"4.1": "AA:AA:AA:AA:AA:01"}
+    essids = {"4.1": "My Network"}
+    channels = {"4": "100"}
+
+    records = parse_own_radio_tables(bssids, essids, channels)
+
+    assert records[0].num_users is None

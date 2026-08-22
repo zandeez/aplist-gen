@@ -15,6 +15,7 @@ class APRecord:
     essid: str
     channel: int | None
     host: str | None = None
+    num_users: int | None = None
 
 
 def filter_cluster_aps(entries: list[ScanEntry], target_essid: str) -> list[APRecord]:
@@ -31,15 +32,25 @@ def parse_own_radio_tables(
     essids: dict[str, str],
     channels: dict[str, str],
     host: str | None = None,
+    users: dict[str, str] | None = None,
 ) -> list[APRecord]:
+    users = users or {}
     records: list[APRecord] = []
     for suffix in sorted(bssids):
         radio = suffix.split(".", 1)[0]
         channel = channels.get(radio)
         if channel is None:
             continue
+        num_users_raw = users.get(radio)
+        num_users = int(num_users_raw) if num_users_raw is not None else None
         records.append(
-            APRecord(bssid=bssids[suffix], essid=essids[suffix], channel=int(channel), host=host)
+            APRecord(
+                bssid=bssids[suffix],
+                essid=essids[suffix],
+                channel=int(channel),
+                host=host,
+                num_users=num_users,
+            )
         )
     return records
 

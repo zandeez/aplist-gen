@@ -23,6 +23,10 @@ ESSID_OID = "1.3.6.1.4.1.8744.5.11.1.1.1.1.2"
 # project's coastal DFS handling cares about most.
 CHANNEL_OID = "1.3.6.1.4.1.8744.5.4.3.1.1.4"
 
+# coDot11NumberOfUsers -- same coDot11AccessPointConfigTable as
+# coDot11BSSID above, same <radio>.<vap> indexing.
+USERS_OID = "1.3.6.1.4.1.8744.5.4.1.1.1.6"
+
 
 async def poll_ap(host: str, community: str, timeout: int = 3, retries: int = 1) -> list[APRecord]:
     """Poll one HP MSM AP's own radio config over SNMP.
@@ -37,9 +41,11 @@ async def poll_ap(host: str, community: str, timeout: int = 3, retries: int = 1)
     raw_bssids = await walk_bounded(engine, community, target, BSSID_OID)
     raw_essids = await walk_bounded(engine, community, target, ESSID_OID)
     raw_channels = await walk_bounded(engine, community, target, CHANNEL_OID)
+    raw_users = await walk_bounded(engine, community, target, USERS_OID)
 
     bssids = {k: format_bssid(v) for k, v in raw_bssids.items()}
     essids = {k: v.prettyPrint() for k, v in raw_essids.items()}
     channels = {k: v.prettyPrint() for k, v in raw_channels.items()}
+    users = {k: v.prettyPrint() for k, v in raw_users.items()}
 
-    return parse_own_radio_tables(bssids, essids, channels, host=host)
+    return parse_own_radio_tables(bssids, essids, channels, host=host, users=users)
