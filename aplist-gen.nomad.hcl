@@ -41,8 +41,7 @@ job "aplist-gen" {
       }
 
       env {
-        # TODO: extend with the other two APs' IPs once deployed.
-        AP_HOSTS     = "192.0.2.139"
+        AP_HOSTS     = "192.0.2.80,192.0.2.149,192.0.2.78"
         OUTPUT_PATH  = "/output/aplist.xml"
         TARGET_ESSID = "My Network"
       }
