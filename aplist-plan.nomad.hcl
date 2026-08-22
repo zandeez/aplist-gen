@@ -23,9 +23,9 @@ job "aplist-plan" {
     }
 
     # Same host volume aplist-gen.nomad.hcl serves aplist.xml from -- the
-    # plan report is written alongside it (as plan_report.html, a
-    # different file) so nginx serves both from one place. Needs write
-    # access for that file; this job never touches aplist.xml itself.
+    # plan report is written alongside it as index.html, so nginx serves
+    # it as the directory's default page. Needs write access for that
+    # file; this job never touches aplist.xml itself.
     volume "aplist-web" {
       type      = "host"
       read_only = false
@@ -58,7 +58,7 @@ job "aplist-plan" {
         AP_HOSTS         = "192.0.2.80,192.0.2.149,192.0.2.78"
         TARGET_ESSID     = "My Network"
         PLAN_CACHE_PATH  = "/cache/plan_cache.json"
-        PLAN_REPORT_PATH = "/output/plan_report.html"
+        PLAN_REPORT_PATH = "/output/index.html"
       }
 
       # SNMP community pulled from a Nomad variable, not a flat file or
