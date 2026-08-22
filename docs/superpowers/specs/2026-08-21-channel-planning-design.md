@@ -176,24 +176,57 @@ poll_all(AP_HOSTS)              poll_all_neighbors(AP_HOSTS, own_essid)
 
 - `--apply` mode: push recommended channels back via SNMP SET, gated
   behind an explicit flag/manual trigger before ever running unattended.
-- Cost-minimization search (approach B from brainstorming): replace the
-  greedy per-AP assignment with a brute-force/local-search minimization
-  over the full assignment space — feasible at this scale (3 APs, small
-  candidate lists) — once dry-run recommendations have been trusted for a
-  while.
 - DFS radar-vacate handling: once `--apply` exists, track forced
   channel-vacate events and CAC timing so automation doesn't fight the
   AP's own radar-safety behavior.
-- **5GHz channel-width awareness** (known limitation, flagged in final
-  review of the phase 1 implementation): `_overlap_units` in `planner.py`
-  only treats two 5GHz channels as overlapping when they're identical,
-  which implicitly assumes every 5GHz radio runs 20MHz channels. At
-  40MHz or 80MHz bonding, channels the scorer treats as independent
-  (e.g. 36/40, or the whole 36-48 block at 80MHz) actually overlap or are
-  literally the same channel — so a `plan` recommendation could collapse
-  a well-separated cluster onto one bonded block if a radio is running
-  wider than 20MHz. Fixing this properly needs a new per-radio
-  channel-width SNMP OID, discovered the same way Task 6 discovered the
-  neighbor-scan OIDs. Until that's done: **do not act on a `plan` 5GHz
-  recommendation without first manually confirming the affected radios'
-  configured channel width is 20MHz.**
+- **Per-AP-pair physical separation** (known limitation, found 2026-08-22
+  after switching to global optimization — see below): `cluster_overlap_cost`
+  treats co-channel overlap between any two cluster radios as equally
+  costly, regardless of which two physical APs are involved or how much
+  their coverage actually overlaps. This was already true under the
+  original greedy algorithm, but greedy's incremental "avoid what's
+  already assigned" bias tended to spread radios apart as a side effect
+  even without modeling this explicitly. The global search has no such
+  bias — it will happily converge multiple physical APs onto the same
+  channel if that's cheaper in total (confirmed live: with this cluster's
+  2.4GHz band this congested, all three APs' 2.4GHz radios can end up
+  recommended onto the same channel). That may be perfectly fine if the
+  APs have little real coverage overlap (frequency reuse), or genuinely
+  bad if they don't — the model can't currently tell the difference.
+  Would need either a configured "these APs are physically close"
+  weighting, or a proxy signal (e.g. whether the cluster APs hear each
+  other in the neighbor-scan table) to resolve properly.
+
+## Changelog since original phase-1 design (2026-08-22)
+
+Implemented after the phase-1 spec above was written and dry-run output
+had been running against real hardware for a day:
+
+- **Fixed `poller.py`'s SNMP OIDs**: the original `BSSID_OID`/`ESSID_OID`
+  were reading `coDot11AssociationTable` (connected client stations) not
+  the AP's own VAP config — found by comparing live output against
+  expectations. Corrected to `coDot11BSSID` + `coVirtualApSSID` (a
+  different MIB module). Also replaced the band-split
+  `CHAN_5G_OID`/`CHAN_24G_OID` pair with the single
+  `coDot11CurrentOperFrequency`, which doesn't silently drop a radio's
+  channel while it's mid-DFS-CAC the way the split tables did.
+- **40MHz channel-width resolved** (superseding the "5GHz channel-width
+  awareness" limitation this section used to carry): this cluster's
+  radios are confirmed running 40MHz HT bonding (no SNMP field exists on
+  this hardware to detect it live). `_overlap_units` now treats
+  40MHz-bonded 5GHz pairs (36+40, 44+48, 52+56, ...) as a full overlap.
+- **Host attribution**: `APRecord`/`ChannelRecommendation` carry the
+  source host, shown in the `plan` report — previously there was no way
+  to tell which physical AP a recommendation was for.
+- **Reason strings cap at 3 contributors + a remainder count** — this
+  cluster's real neighbor-scan data runs into the dozens of external
+  networks per channel, which made uncapped reasons unreadable.
+- **Day/evening DFS avoidance per AP**: `192.0.2.78` gets
+  `DFS_HEAVY_PENALTY` during 06:00–18:00 local time, `192.0.2.149`
+  during 18:00–23:00 — specific, known-critical windows per AP, not a
+  general busy-ness heuristic (an earlier idea to weight this by
+  `coDot11NumberOfUsers` was superseded by this explicit rule).
+- **Global brute-force search replaces the greedy per-AP assignment**
+  (the cost-minimization search this section originally deferred) — see
+  `planner.py`'s `_best_band_assignment`. Feasible at this cluster's
+  scale as originally predicted.
