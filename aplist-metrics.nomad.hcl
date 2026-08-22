@@ -16,8 +16,9 @@ job "aplist-metrics" {
         # TEMPORARY: same locally-built image as aplist-gen/aplist-plan --
         # see their config blocks for why (registry auth not yet set up
         # on this Nomad client for the podman driver).
-        image = "localhost/aplist:latest"
-        args  = ["metrics"]
+        image        = "localhost/aplist:latest"
+        network_mode = "host"
+        args         = ["metrics"]
       }
 
       env {

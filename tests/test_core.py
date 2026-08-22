@@ -202,11 +202,22 @@ def test_parse_own_radio_tables_includes_num_users():
     bssids = {"4.1": "AA:AA:AA:AA:AA:01"}
     essids = {"4.1": "My Network"}
     channels = {"4": "100"}
-    users = {"4": "3"}
+    users = {"4.1": "3"}
 
     records = parse_own_radio_tables(bssids, essids, channels, users=users)
 
     assert records[0].num_users == 3
+
+
+def test_parse_own_radio_tables_num_users_keyed_by_radio_only_does_not_match():
+    bssids = {"4.1": "AA:AA:AA:AA:AA:01"}
+    essids = {"4.1": "My Network"}
+    channels = {"4": "100"}
+    users = {"4": "3"}  # radio-only key -- wrong shape, must not match "4.1"
+
+    records = parse_own_radio_tables(bssids, essids, channels, users=users)
+
+    assert records[0].num_users is None
 
 
 def test_parse_own_radio_tables_num_users_defaults_to_none_when_missing():

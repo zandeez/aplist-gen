@@ -41,7 +41,7 @@ def parse_own_radio_tables(
         channel = channels.get(radio)
         if channel is None:
             continue
-        num_users_raw = users.get(radio)
+        num_users_raw = users.get(suffix)
         num_users = int(num_users_raw) if num_users_raw is not None else None
         records.append(
             APRecord(
