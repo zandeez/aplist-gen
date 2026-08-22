@@ -58,7 +58,11 @@ job "aplist-nginx" {
 
         tags = [
           "traefik.enable=true",
-          "traefik.http.routers.aplist.middlewares=platform@file,internal@file",
+          # No "platform@file" here (forcessl/secureheaders/compression) --
+          # this route deliberately allows plain HTTP, unlike this
+          # cluster's other Traefik-routed services. Still restricted to
+          # the internal network via "internal@file" (IP allowlist).
+          "traefik.http.routers.aplist.middlewares=internal@file",
           "traefik.http.routers.aplist.rule=Host(`aplist.example.com`)",
         ]
 
