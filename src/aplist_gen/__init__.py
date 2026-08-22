@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import html
 import os
 import sys
 from pathlib import Path
@@ -47,6 +48,57 @@ def print_plan_report(recommendations: list[ChannelRecommendation]) -> None:
                 f"{prefix}{rec.bssid} {rec.essid!r}: channel {rec.current_channel} -> "
                 f"{rec.recommended_channel} ({rec.reason})"
             )
+
+
+def format_plan_report_html(recommendations: list[ChannelRecommendation]) -> str:
+    rows = []
+    for rec in recommendations:
+        if rec.recommended_channel == rec.current_channel:
+            change = f"{rec.current_channel} (no change)"
+            reason = ""
+        else:
+            change = f"{rec.current_channel} -&gt; {rec.recommended_channel}"
+            reason = rec.reason
+        rows.append(
+            "<tr>"
+            f"<td>{html.escape(rec.host or '')}</td>"
+            f"<td>{html.escape(rec.bssid)}</td>"
+            f"<td>{html.escape(rec.essid)}</td>"
+            f"<td>{change}</td>"
+            f"<td>{html.escape(reason)}</td>"
+            "</tr>"
+        )
+    table_rows = "\n".join(rows)
+    return f"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>aplist-gen channel plan</title>
+<style>
+  body {{ font-family: sans-serif; margin: 2em; }}
+  table {{ border-collapse: collapse; width: 100%; }}
+  th, td {{ border: 1px solid #ccc; padding: 0.4em 0.6em; text-align: left; vertical-align: top; }}
+  th {{ background: #f0f0f0; }}
+</style>
+</head>
+<body>
+<h1>Channel plan</h1>
+<table>
+<tr><th>Host</th><th>BSSID</th><th>ESSID</th><th>Channel</th><th>Reason</th></tr>
+{table_rows}
+</table>
+</body>
+</html>
+"""
+
+
+def _write_plan_report_if_configured(report_path: str | None, text: str, record_count: int) -> None:
+    if not report_path:
+        return
+    try:
+        write_output(Path(report_path), text, record_count=record_count)
+    except EmptyResultError as exc:
+        print(f"warning: {exc}", file=sys.stderr)
 
 
 def _save_trust_cache_if_sightings(
@@ -144,6 +196,12 @@ def run_plan(args: argparse.Namespace) -> int:
 
     recommendations = plan_channels(own_records, trusted, CANDIDATES_24G, CANDIDATES_5G, DFS_CHANNELS)
     print_plan_report(recommendations)
+
+    report_path = os.environ.get("PLAN_REPORT_PATH")
+    _write_plan_report_if_configured(
+        report_path, format_plan_report_html(recommendations), record_count=len(recommendations)
+    )
+
     return 0
 
 

@@ -1,4 +1,11 @@
-from aplist_gen import _save_trust_cache_if_sightings, main, parse_args, print_plan_report
+from aplist_gen import (
+    _save_trust_cache_if_sightings,
+    _write_plan_report_if_configured,
+    format_plan_report_html,
+    main,
+    parse_args,
+    print_plan_report,
+)
 from aplist_gen.core import ScanEntry
 from aplist_gen.planner import ChannelRecommendation
 
@@ -82,6 +89,83 @@ def test_print_plan_report_omits_host_prefix_when_unknown(capsys):
 
     out = capsys.readouterr().out
     assert "None" not in out
+
+
+def test_format_plan_report_html_shows_no_change():
+    rec = ChannelRecommendation(
+        bssid="AA:AA:AA:AA:AA:01",
+        essid="My Network",
+        current_channel=6,
+        recommended_channel=6,
+        reason="",
+        host="192.0.2.80",
+    )
+
+    html = format_plan_report_html([rec])
+
+    assert "<!doctype html>" in html.lower()
+    assert "192.0.2.80" in html
+    assert "AA:AA:AA:AA:AA:01" in html
+    assert "6 (no change)" in html
+
+
+def test_format_plan_report_html_shows_recommended_change():
+    rec = ChannelRecommendation(
+        bssid="AA:AA:AA:AA:AA:01",
+        essid="My Network",
+        current_channel=6,
+        recommended_channel=1,
+        reason="channel 6 overlaps cluster AP AA:AA:AA:AA:AA:02 on channel 6",
+        host="192.0.2.80",
+    )
+
+    html = format_plan_report_html([rec])
+
+    assert "6 -&gt; 1" in html or "6 -> 1" in html
+    assert "overlaps cluster AP" in html
+
+
+def test_format_plan_report_html_escapes_untrusted_essid_and_reason():
+    # ESSID and reason text can contain arbitrary bytes from other
+    # people's Wi-Fi network names (the neighbor-scan table) -- this must
+    # never be embedded into the HTML unescaped.
+    rec = ChannelRecommendation(
+        bssid="AA:AA:AA:AA:AA:01",
+        essid="<script>alert(1)</script>",
+        current_channel=6,
+        recommended_channel=1,
+        reason="channel 6 overlaps external network '<img src=x onerror=alert(1)>' on channel 6",
+    )
+
+    html = format_plan_report_html([rec])
+
+    assert "<script>" not in html
+    assert "<img" not in html
+    assert "&lt;script&gt;" in html
+    assert "&lt;img" in html
+
+
+def test_write_plan_report_skips_when_path_not_configured():
+    # None must not raise -- PLAN_REPORT_PATH is optional.
+    _write_plan_report_if_configured(None, "<html></html>", record_count=1)
+
+
+def test_write_plan_report_writes_when_path_configured(tmp_path):
+    path = tmp_path / "plan_report.html"
+
+    _write_plan_report_if_configured(str(path), "<html>hello</html>", record_count=1)
+
+    assert path.read_text() == "<html>hello</html>"
+
+
+def test_write_plan_report_refuses_empty_result_and_warns(tmp_path, capsys):
+    path = tmp_path / "plan_report.html"
+    path.write_text("<html>last-good</html>")
+
+    _write_plan_report_if_configured(str(path), "<html></html>", record_count=0)
+
+    assert "warning" in capsys.readouterr().err
+    assert path.read_text() == "<html>last-good</html>"
 
 
 def test_main_plan_without_ap_hosts_exits_1(monkeypatch, capsys):
