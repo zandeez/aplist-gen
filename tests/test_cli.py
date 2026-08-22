@@ -208,3 +208,18 @@ def test_save_trust_cache_writes_when_sightings_present(tmp_path):
     )
 
     assert path.exists()
+
+
+def test_parse_args_accepts_metrics_command():
+    args = parse_args(["metrics"])
+
+    assert args.command == "metrics"
+
+
+def test_main_metrics_without_ap_hosts_exits_1(monkeypatch, capsys):
+    monkeypatch.delenv("AP_HOSTS", raising=False)
+
+    exit_code = main(["metrics"])
+
+    assert exit_code == 1
+    assert "AP_HOSTS is not set" in capsys.readouterr().err

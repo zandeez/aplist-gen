@@ -7,7 +7,13 @@ from pathlib import Path
 
 from aplist_gen.core import APRecord, ScanEntry, to_simple_ap_list_text
 from aplist_gen.io_utils import EmptyResultError, write_output
-from aplist_gen.neighbor_scan import poll_all_neighbors
+from aplist_gen.metrics import (
+    format_neighbor_metrics,
+    format_own_radio_metrics,
+    format_poll_failures,
+    push_metrics,
+)
+from aplist_gen.neighbor_scan import poll_all_neighbors, poll_neighbors
 from aplist_gen.planner import CANDIDATES_24G, CANDIDATES_5G, DFS_CHANNELS, ChannelRecommendation, plan_channels
 from aplist_gen.poller import poll_ap
 from aplist_gen.trust_cache import load_cache, process_sightings, save_cache
@@ -36,6 +42,84 @@ async def _gather_plan_data(
         poll_all_neighbors(hosts, community, target_essid),
     )
     return own_records, external_sightings
+
+
+async def _poll_all_with_failures(hosts: list[str], community: str) -> tuple[list[APRecord], list[str]]:
+    results = await asyncio.gather(
+        *(poll_ap(host, community) for host in hosts), return_exceptions=True
+    )
+    records_by_bssid: dict[str, APRecord] = {}
+    failed_hosts: list[str] = []
+    for host, result in zip(hosts, results):
+        if isinstance(result, Exception):
+            print(f"warning: poll of {host} failed: {result}", file=sys.stderr)
+            failed_hosts.append(host)
+            continue
+        for record in result:
+            records_by_bssid[record.bssid] = record
+    return list(records_by_bssid.values()), failed_hosts
+
+
+async def _poll_all_neighbors_with_failures(
+    hosts: list[str], community: str, own_essid: str
+) -> tuple[list[ScanEntry], list[str]]:
+    results = await asyncio.gather(
+        *(poll_neighbors(host, community, own_essid) for host in hosts), return_exceptions=True
+    )
+    entries_by_bssid: dict[str, ScanEntry] = {}
+    failed_hosts: list[str] = []
+    for host, result in zip(hosts, results):
+        if isinstance(result, Exception):
+            print(f"warning: neighbor scan of {host} failed: {result}", file=sys.stderr)
+            failed_hosts.append(host)
+            continue
+        for entry in result:
+            entries_by_bssid[entry.bssid] = entry
+    return list(entries_by_bssid.values()), failed_hosts
+
+
+async def _gather_metrics_data(
+    hosts: list[str], community: str, target_essid: str
+) -> tuple[list[APRecord], list[ScanEntry], list[str]]:
+    (own_records, own_failed), (external_sightings, external_failed) = await asyncio.gather(
+        _poll_all_with_failures(hosts, community),
+        _poll_all_neighbors_with_failures(hosts, community, target_essid),
+    )
+    failed_hosts = sorted(set(own_failed) | set(external_failed))
+    return own_records, external_sightings, failed_hosts
+
+
+def run_metrics(args: argparse.Namespace) -> int:
+    config = _read_ap_config()
+    if config is None:
+        return 1
+    hosts, community, target_essid = config
+    metrics_url = os.environ.get("METRICS_URL")
+
+    own_records, external_sightings, failed_hosts = asyncio.run(
+        _gather_metrics_data(hosts, community, target_essid)
+    )
+    own_records = [r for r in own_records if r.essid == target_essid]
+
+    text = (
+        format_own_radio_metrics(own_records)
+        + format_neighbor_metrics(external_sightings)
+        + format_poll_failures(hosts, failed_hosts)
+    )
+
+    if args.debug_dump:
+        print(text, end="")
+
+    if not metrics_url:
+        print("warning: METRICS_URL is not set, skipping push", file=sys.stderr)
+        return 0
+
+    try:
+        push_metrics(metrics_url, text)
+    except OSError as exc:
+        print(f"warning: failed to push metrics to {metrics_url}: {exc}", file=sys.stderr)
+
+    return 0
 
 
 def print_plan_report(recommendations: list[ChannelRecommendation]) -> None:
@@ -138,9 +222,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "command",
         nargs="?",
         default="generate",
-        choices=["generate", "plan"],
+        choices=["generate", "plan", "metrics"],
         help="'generate' (default) writes aplist.xml; 'plan' reports channel "
-        "recommendations without writing or changing anything",
+        "recommendations without writing or changing anything; 'metrics' "
+        "pushes observational data to VictoriaMetrics",
     )
     parser.add_argument("--dry-run", action="store_true", help="print, don't write the output file (generate only)")
     parser.add_argument("--debug-dump", action="store_true", help="print per-host raw records")
@@ -209,6 +294,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.command == "plan":
         return run_plan(args)
+    if args.command == "metrics":
+        return run_metrics(args)
     return run_generate(args)
 
 
