@@ -228,3 +228,66 @@ def test_parse_own_radio_tables_num_users_defaults_to_none_when_missing():
     records = parse_own_radio_tables(bssids, essids, channels)
 
     assert records[0].num_users is None
+
+
+def test_parse_own_radio_tables_includes_snr():
+    bssids = {"4.1": "AA:AA:AA:AA:AA:01"}
+    essids = {"4.1": "My Network"}
+    channels = {"4": "100"}
+    snr = {"4.1": "35"}
+
+    records = parse_own_radio_tables(bssids, essids, channels, snr=snr)
+
+    assert records[0].snr_db == 35
+
+
+def test_parse_own_radio_tables_snr_keyed_by_radio_only_does_not_match():
+    bssids = {"4.1": "AA:AA:AA:AA:AA:01"}
+    essids = {"4.1": "My Network"}
+    channels = {"4": "100"}
+    snr = {"4": "35"}  # radio-only key -- wrong shape, must not match "4.1"
+
+    records = parse_own_radio_tables(bssids, essids, channels, snr=snr)
+
+    assert records[0].snr_db is None
+
+
+def test_parse_own_radio_tables_includes_radio_keyed_counters():
+    bssids = {"4.1": "AA:AA:AA:AA:AA:01"}
+    essids = {"4.1": "My Network"}
+    channels = {"4": "100"}
+    noise = {"4": "-86"}
+    retry_count = {"4": "106268"}
+    multiple_retry_count = {"4": "11018"}
+    failed_count = {"4": "113060"}
+    ack_failure_count = {"4": "113060"}
+
+    records = parse_own_radio_tables(
+        bssids, essids, channels,
+        noise=noise,
+        retry_count=retry_count,
+        multiple_retry_count=multiple_retry_count,
+        failed_count=failed_count,
+        ack_failure_count=ack_failure_count,
+    )
+
+    assert records[0].noise_dbm == -86
+    assert records[0].retry_count == 106268
+    assert records[0].multiple_retry_count == 11018
+    assert records[0].failed_count == 113060
+    assert records[0].ack_failure_count == 113060
+
+
+def test_parse_own_radio_tables_new_fields_default_to_none():
+    bssids = {"4.1": "AA:AA:AA:AA:AA:01"}
+    essids = {"4.1": "My Network"}
+    channels = {"4": "100"}
+
+    records = parse_own_radio_tables(bssids, essids, channels)
+
+    assert records[0].snr_db is None
+    assert records[0].noise_dbm is None
+    assert records[0].retry_count is None
+    assert records[0].multiple_retry_count is None
+    assert records[0].failed_count is None
+    assert records[0].ack_failure_count is None

@@ -16,6 +16,12 @@ class APRecord:
     channel: int | None
     host: str | None = None
     num_users: int | None = None
+    snr_db: int | None = None
+    noise_dbm: int | None = None
+    retry_count: int | None = None
+    multiple_retry_count: int | None = None
+    failed_count: int | None = None
+    ack_failure_count: int | None = None
 
 
 def filter_cluster_aps(entries: list[ScanEntry], target_essid: str) -> list[APRecord]:
@@ -33,8 +39,20 @@ def parse_own_radio_tables(
     channels: dict[str, str],
     host: str | None = None,
     users: dict[str, str] | None = None,
+    snr: dict[str, str] | None = None,
+    noise: dict[str, str] | None = None,
+    retry_count: dict[str, str] | None = None,
+    multiple_retry_count: dict[str, str] | None = None,
+    failed_count: dict[str, str] | None = None,
+    ack_failure_count: dict[str, str] | None = None,
 ) -> list[APRecord]:
     users = users or {}
+    snr = snr or {}
+    noise = noise or {}
+    retry_count = retry_count or {}
+    multiple_retry_count = multiple_retry_count or {}
+    failed_count = failed_count or {}
+    ack_failure_count = ack_failure_count or {}
     records: list[APRecord] = []
     for suffix in sorted(bssids):
         radio = suffix.split(".", 1)[0]
@@ -43,6 +61,18 @@ def parse_own_radio_tables(
             continue
         num_users_raw = users.get(suffix)
         num_users = int(num_users_raw) if num_users_raw is not None else None
+        snr_raw = snr.get(suffix)
+        snr_db = int(snr_raw) if snr_raw is not None else None
+        noise_raw = noise.get(radio)
+        noise_dbm = int(noise_raw) if noise_raw is not None else None
+        retry_raw = retry_count.get(radio)
+        retry = int(retry_raw) if retry_raw is not None else None
+        multiple_retry_raw = multiple_retry_count.get(radio)
+        multiple_retry = int(multiple_retry_raw) if multiple_retry_raw is not None else None
+        failed_raw = failed_count.get(radio)
+        failed = int(failed_raw) if failed_raw is not None else None
+        ack_failure_raw = ack_failure_count.get(radio)
+        ack_failure = int(ack_failure_raw) if ack_failure_raw is not None else None
         records.append(
             APRecord(
                 bssid=bssids[suffix],
@@ -50,6 +80,12 @@ def parse_own_radio_tables(
                 channel=int(channel),
                 host=host,
                 num_users=num_users,
+                snr_db=snr_db,
+                noise_dbm=noise_dbm,
+                retry_count=retry,
+                multiple_retry_count=multiple_retry,
+                failed_count=failed,
+                ack_failure_count=ack_failure,
             )
         )
     return records
