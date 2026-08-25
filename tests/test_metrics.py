@@ -68,3 +68,49 @@ def test_format_poll_failures_marks_failed_and_healthy_hosts():
 
     assert 'aplist_poll_failure{host="192.0.2.80"} 0' in text
     assert 'aplist_poll_failure{host="192.0.2.149"} 1' in text
+
+
+def test_format_own_radio_metrics_includes_snr_and_noise():
+    records = [
+        APRecord(
+            bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=100, host="192.0.2.78",
+            snr_db=35, noise_dbm=-86,
+        ),
+    ]
+
+    text = format_own_radio_metrics(records)
+
+    assert 'aplist_snr_db{host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network"} 35' in text
+    assert 'aplist_noise_floor_dbm{host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network"} -86' in text
+
+
+def test_format_own_radio_metrics_includes_error_counters():
+    records = [
+        APRecord(
+            bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=100, host="192.0.2.78",
+            retry_count=106268, multiple_retry_count=11018, failed_count=113060, ack_failure_count=113060,
+        ),
+    ]
+
+    text = format_own_radio_metrics(records)
+
+    labels = 'host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network"'
+    assert f'aplist_retry_count{{{labels}}} 106268' in text
+    assert f'aplist_multiple_retry_count{{{labels}}} 11018' in text
+    assert f'aplist_failed_count{{{labels}}} 113060' in text
+    assert f'aplist_ack_failure_count{{{labels}}} 113060' in text
+
+
+def test_format_own_radio_metrics_omits_new_metrics_when_unknown():
+    records = [
+        APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=100, host="192.0.2.78"),
+    ]
+
+    text = format_own_radio_metrics(records)
+
+    assert "aplist_snr_db" not in text
+    assert "aplist_noise_floor_dbm" not in text
+    assert "aplist_retry_count" not in text
+    assert "aplist_multiple_retry_count" not in text
+    assert "aplist_failed_count" not in text
+    assert "aplist_ack_failure_count" not in text

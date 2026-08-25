@@ -17,6 +17,18 @@ def format_own_radio_metrics(records: list[APRecord]) -> str:
         lines.append(f"aplist_own_channel{{{labels}}} {record.channel}")
         if record.num_users is not None:
             lines.append(f"aplist_connected_users{{{labels}}} {record.num_users}")
+        if record.snr_db is not None:
+            lines.append(f"aplist_snr_db{{{labels}}} {record.snr_db}")
+        if record.noise_dbm is not None:
+            lines.append(f"aplist_noise_floor_dbm{{{labels}}} {record.noise_dbm}")
+        if record.retry_count is not None:
+            lines.append(f"aplist_retry_count{{{labels}}} {record.retry_count}")
+        if record.multiple_retry_count is not None:
+            lines.append(f"aplist_multiple_retry_count{{{labels}}} {record.multiple_retry_count}")
+        if record.failed_count is not None:
+            lines.append(f"aplist_failed_count{{{labels}}} {record.failed_count}")
+        if record.ack_failure_count is not None:
+            lines.append(f"aplist_ack_failure_count{{{labels}}} {record.ack_failure_count}")
     return "".join(line + "\n" for line in lines)
 
 
