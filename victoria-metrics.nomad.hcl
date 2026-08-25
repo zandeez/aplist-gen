@@ -45,7 +45,15 @@ job "victoria-metrics" {
 
         tags = [
           "traefik.enable=true",
-          "traefik.http.routers.victoria-metrics.middlewares=platform@file,internal@file",
+          # Bare-root redirect to the built-in UI -- regex only matches
+          # when the path is exactly "/", so /vmui/* itself and the API
+          # endpoints pass through untouched. internal@file/platform@file
+          # run first so access control and forced-HTTPS are enforced
+          # before the redirect ever fires.
+          "traefik.http.middlewares.victoria-metrics-root.redirectregex.regex=^(https?://[^/]+)/$",
+          "traefik.http.middlewares.victoria-metrics-root.redirectregex.replacement=$${1}/vmui/",
+          "traefik.http.middlewares.victoria-metrics-root.redirectregex.permanent=true",
+          "traefik.http.routers.victoria-metrics.middlewares=internal@file,platform@file,victoria-metrics-root",
           "traefik.http.routers.victoria-metrics.rule=Host(`victoria-metrics.example.com`)",
         ]
 

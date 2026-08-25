@@ -58,7 +58,12 @@ job "victoria-logs" {
 
         tags = [
           "traefik.enable=true",
-          "traefik.http.routers.victoria-logs.middlewares=platform@file,internal@file",
+          # Bare-root redirect to the built-in UI -- see victoria-metrics
+          # for why the regex only fires on an exact "/" path.
+          "traefik.http.middlewares.victoria-logs-root.redirectregex.regex=^(https?://[^/]+)/$",
+          "traefik.http.middlewares.victoria-logs-root.redirectregex.replacement=$${1}/select/vmui/",
+          "traefik.http.middlewares.victoria-logs-root.redirectregex.permanent=true",
+          "traefik.http.routers.victoria-logs.middlewares=internal@file,platform@file,victoria-logs-root",
           "traefik.http.routers.victoria-logs.rule=Host(`victoria-logs.example.com`)",
         ]
 
