@@ -13,11 +13,9 @@ job "victoria-metrics" {
       }
     }
 
-    # TODO: create this host volume on the Nomad client before first
-    # deploy, owned by whatever UID the victoria-metrics image runs
-    # as (check with `podman run --rm --entrypoint id <image>` the
-    # same way aplist-gen's UID 999 was confirmed -- this is a
-    # different image, likely a different UID).
+    # Runs as root by default (confirmed via `podman run --rm
+    # --entrypoint id <image>`), unlike aplist-gen's UID 999 -- no
+    # chown needed on this host volume.
     volume "victoria-metrics-data" {
       type      = "host"
       read_only = false
@@ -44,6 +42,12 @@ job "victoria-metrics" {
         port         = "http"
         provider     = "nomad"
         address_mode = "host"
+
+        tags = [
+          "traefik.enable=true",
+          "traefik.http.routers.victoria-metrics.middlewares=platform@file,internal@file",
+          "traefik.http.routers.victoria-metrics.rule=Host(`victoria-metrics.example.com`)",
+        ]
 
         check {
           type     = "http"
