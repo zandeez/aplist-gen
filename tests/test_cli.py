@@ -223,3 +223,54 @@ def test_main_metrics_without_ap_hosts_exits_1(monkeypatch, capsys):
 
     assert exit_code == 1
     assert "AP_HOSTS is not set" in capsys.readouterr().err
+
+
+async def _fake_gather_metrics_data(*a, **k):
+    # _gather_metrics_data is an async function -- run_metrics does
+    # asyncio.run(_gather_metrics_data(...)), so the fake must itself be
+    # a coroutine function, not a plain lambda returning a tuple.
+    return [], [], []
+
+
+def test_run_metrics_appends_config_change_count_when_logs_url_set(monkeypatch, capsys):
+    monkeypatch.setenv("AP_HOSTS", "192.0.2.80")
+    monkeypatch.setenv("LOGS_URL", "http://192.0.2.1:9428/select/logsql/query")
+    monkeypatch.delenv("METRICS_URL", raising=False)
+    monkeypatch.setattr("aplist_gen._gather_metrics_data", _fake_gather_metrics_data)
+    monkeypatch.setattr("aplist_gen.query_config_change_count", lambda *a, **k: 4)
+
+    exit_code = main(["metrics", "--debug-dump"])
+
+    assert exit_code == 0
+    assert "aplist_config_change_count 4" in capsys.readouterr().out
+
+
+def test_run_metrics_skips_config_change_count_when_logs_url_unset(monkeypatch, capsys):
+    monkeypatch.setenv("AP_HOSTS", "192.0.2.80")
+    monkeypatch.delenv("LOGS_URL", raising=False)
+    monkeypatch.delenv("METRICS_URL", raising=False)
+    monkeypatch.setattr("aplist_gen._gather_metrics_data", _fake_gather_metrics_data)
+
+    exit_code = main(["metrics", "--debug-dump"])
+
+    assert exit_code == 0
+    assert "aplist_config_change_count" not in capsys.readouterr().out
+
+
+def test_run_metrics_warns_and_continues_when_logs_query_fails(monkeypatch, capsys):
+    monkeypatch.setenv("AP_HOSTS", "192.0.2.80")
+    monkeypatch.setenv("LOGS_URL", "http://192.0.2.1:9428/select/logsql/query")
+    monkeypatch.delenv("METRICS_URL", raising=False)
+    monkeypatch.setattr("aplist_gen._gather_metrics_data", _fake_gather_metrics_data)
+
+    def raise_oserror(*a, **k):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr("aplist_gen.query_config_change_count", raise_oserror)
+
+    exit_code = main(["metrics", "--debug-dump"])
+
+    assert exit_code == 0
+    err = capsys.readouterr().err
+    assert "warning" in err
+    assert "connection refused" in err

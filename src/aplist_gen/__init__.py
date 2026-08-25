@@ -12,6 +12,7 @@ from aplist_gen.metrics import (
     format_own_radio_metrics,
     format_poll_failures,
     push_metrics,
+    query_config_change_count,
 )
 from aplist_gen.neighbor_scan import poll_all_neighbors, poll_neighbors
 from aplist_gen.planner import CANDIDATES_24G, CANDIDATES_5G, DFS_CHANNELS, ChannelRecommendation, plan_channels
@@ -95,6 +96,7 @@ def run_metrics(args: argparse.Namespace) -> int:
         return 1
     hosts, community, target_essid = config
     metrics_url = os.environ.get("METRICS_URL")
+    logs_url = os.environ.get("LOGS_URL")
 
     own_records, external_sightings, failed_hosts = asyncio.run(
         _gather_metrics_data(hosts, community, target_essid)
@@ -106,6 +108,15 @@ def run_metrics(args: argparse.Namespace) -> int:
         + format_neighbor_metrics(external_sightings)
         + format_poll_failures(hosts, failed_hosts)
     )
+
+    if logs_url:
+        try:
+            config_change_count = query_config_change_count(logs_url)
+            text += f"aplist_config_change_count {config_change_count}\n"
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"warning: failed to query config-change count from {logs_url}: {exc}", file=sys.stderr)
+    else:
+        print("warning: LOGS_URL is not set, skipping config-change-count metric", file=sys.stderr)
 
     if args.debug_dump:
         print(text, end="")
