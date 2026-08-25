@@ -34,3 +34,19 @@ async def walk_bounded(engine, community: str, target, base_oid: str) -> dict[st
 
 def format_bssid(value) -> str:
     return ":".join(f"{b:02X}" for b in value.asOctets())
+
+
+def collapse_to_radio_key(raw: dict[str, str]) -> dict[str, str]:
+    """Collapse an association-indexed dict (<radio>.<assocIndex> keys) to
+    radio-only keys, keeping the first value seen per radio.
+
+    Used for coDot11NoiseLevel, which reports the same ambient noise
+    value on every one of a radio's currently-connected clients --
+    "first wins" is equivalent to an average since the values are
+    identical, not an arbitrary choice.
+    """
+    collapsed: dict[str, str] = {}
+    for suffix, value in raw.items():
+        radio = suffix.split(".", 1)[0]
+        collapsed.setdefault(radio, value)
+    return collapsed

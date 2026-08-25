@@ -113,7 +113,7 @@ def run_metrics(args: argparse.Namespace) -> int:
         try:
             config_change_count = query_config_change_count(logs_url)
             text += f"aplist_config_change_count {config_change_count}\n"
-        except (OSError, ValueError, KeyError) as exc:
+        except (OSError, ValueError, KeyError, TypeError) as exc:
             print(f"warning: failed to query config-change count from {logs_url}: {exc}", file=sys.stderr)
     else:
         print("warning: LOGS_URL is not set, skipping config-change-count metric", file=sys.stderr)

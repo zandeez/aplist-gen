@@ -142,7 +142,7 @@ def test_query_config_change_count_parses_response(monkeypatch):
     assert count == 7
     assert captured["url"] == "http://192.0.2.1:9428/select/logsql/query"
     assert b"eventmgr" in captured["data"]
-    assert b"_time:15m" in captured["data"]
+    assert b"_time%3A15m" in captured["data"]
 
 
 def test_query_config_change_count_handles_empty_response(monkeypatch):
@@ -187,4 +187,4 @@ def test_query_config_change_count_uses_custom_window(monkeypatch):
 
     query_config_change_count("http://192.0.2.1:9428/select/logsql/query", window="1h")
 
-    assert b"_time:1h" in captured["data"]
+    assert b"_time%3A1h" in captured["data"]

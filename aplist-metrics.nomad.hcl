@@ -34,6 +34,7 @@ job "aplist-metrics" {
         # cluster ever goes multi-node or victoria-metrics's job switches
         # to host networking.
         METRICS_URL  = "http://192.0.2.1:8428/api/v1/import/prometheus"
+        LOGS_URL     = "http://192.0.2.1:9428/select/logsql/query"
       }
 
       # SNMP community pulled from a Nomad variable, not a flat file or

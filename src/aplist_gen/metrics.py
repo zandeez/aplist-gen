@@ -1,4 +1,5 @@
 import json
+import urllib.parse
 import urllib.request
 
 from aplist_gen.core import APRecord, ScanEntry
@@ -71,9 +72,8 @@ def query_config_change_count(logs_url: str, window: str = "15m") -> int:
     # this is a coarse activity signal, not an audit log; the raw syslog
     # lines in victoria-logs remain authoritative if precision matters.
     query = f'eventmgr AND "Configuration has changed" AND _time:{window} | stats count() as cnt'
-    request = urllib.request.Request(
-        logs_url, data=f"query={query}".encode("utf-8"), method="POST"
-    )
+    data = urllib.parse.urlencode({"query": query}).encode("utf-8")
+    request = urllib.request.Request(logs_url, data=data, method="POST")
     with urllib.request.urlopen(request, timeout=10) as response:
         body = response.read().decode("utf-8").strip()
     if not body:

@@ -1,7 +1,7 @@
 from pysnmp.hlapi.v3arch.asyncio import SnmpEngine, UdpTransportTarget
 
 from aplist_gen.core import APRecord, parse_own_radio_tables
-from aplist_gen.snmp_utils import format_bssid, walk_bounded
+from aplist_gen.snmp_utils import collapse_to_radio_key, format_bssid, walk_bounded
 
 # coDot11BSSID (COLUBRIS-802DOT11-MIB, coDot11AccessPointConfigTable) -- the
 # AP's own configured VAP BSSID. Earlier versions of this poller read
@@ -86,10 +86,7 @@ async def poll_ap(host: str, community: str, timeout: int = 3, retries: int = 1)
     # collapse to one value per radio (identical across clients, see
     # NOISE_OID comment above) before it reaches parse_own_radio_tables,
     # which expects radio-only keys like channels/retry_count/etc.
-    noise: dict[str, str] = {}
-    for suffix, value in raw_noise.items():
-        radio = suffix.split(".", 1)[0]
-        noise.setdefault(radio, value.prettyPrint())
+    noise = collapse_to_radio_key({k: v.prettyPrint() for k, v in raw_noise.items()})
 
     return parse_own_radio_tables(
         bssids, essids, channels,
