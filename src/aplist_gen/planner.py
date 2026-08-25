@@ -4,7 +4,10 @@ from dataclasses import dataclass
 
 from aplist_gen.core import APRecord, ScanEntry
 
-CANDIDATES_24G: list[int] = [1, 6, 11]
+# UK regulatory domain allows 13 channels (confirmed via this cluster's own
+# AP admin UI, 2026-08-25) -- HP's own official guidance for a 13-channel
+# region at 20MHz width is 1/7/13, not the US/FCC 11-channel 1/6/11 set.
+CANDIDATES_24G: list[int] = [1, 7, 13]
 
 # UNII-1: non-DFS on effectively every regulatory domain, including UK/ETSI.
 NON_DFS_5G: list[int] = [36, 40, 44, 48]

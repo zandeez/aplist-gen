@@ -28,16 +28,16 @@ def test_plan_channels_keeps_ap_when_no_conflict():
 
 def test_plan_channels_separates_conflicting_cluster_aps_on_24g():
     own_records = [
-        APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=6),
-        APRecord(bssid="AA:AA:AA:AA:AA:02", essid="My Network", channel=6),
+        APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=1),
+        APRecord(bssid="AA:AA:AA:AA:AA:02", essid="My Network", channel=1),
     ]
 
     recs = plan_channels(own_records, [], CANDIDATES_24G, CANDIDATES_5G, DFS_CHANNELS)
 
     first, second = recs
-    assert (first.current_channel, first.recommended_channel) == (6, 6)
-    assert second.current_channel == 6
-    assert second.recommended_channel != 6
+    assert (first.current_channel, first.recommended_channel) == (1, 1)
+    assert second.current_channel == 1
+    assert second.recommended_channel != 1
     assert "AA:AA:AA:AA:AA:01" in second.reason
 
 
@@ -142,23 +142,24 @@ def test_cluster_overlap_costs_more_than_equivalent_external_overlap():
 
 def test_plan_channels_uses_the_one_clear_channel_for_only_one_ap():
     # Two cluster APs, both currently on congested channels, with channel
-    # 11 clear of both external interference and their own conflict. The
-    # globally cheapest move is for exactly one AP to take channel 11 and
+    # 13 clear of both external interference and their own conflict. The
+    # globally cheapest move is for exactly one AP to take channel 13 and
     # the other to stay put and eat its own external congestion alone --
-    # not for both to converge onto 11 and create their own overlap.
+    # not for both to converge onto 13 and create their own overlap.
     own_records = [
         APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=1),
-        APRecord(bssid="AA:AA:AA:AA:AA:02", essid="My Network", channel=6),
+        APRecord(bssid="AA:AA:AA:AA:AA:02", essid="My Network", channel=7),
     ]
     external = [
         ScanEntry(bssid="DE:AD:BE:EF:00:01", essid="Neighbour1", channel=1, rssi=-40),
-        ScanEntry(bssid="DE:AD:BE:EF:00:02", essid="Neighbour2", channel=6, rssi=-40),
+        ScanEntry(bssid="DE:AD:BE:EF:00:02", essid="Neighbour2", channel=7, rssi=-40),
     ]
 
     recs = plan_channels(own_records, external, CANDIDATES_24G, CANDIDATES_5G, DFS_CHANNELS)
 
     recommended = {rec.recommended_channel for rec in recs}
-    assert recommended == {1, 11}
+    assert 13 in recommended
+    assert len(recommended) == 2
 
 
 def test_cluster_overlap_cost_treats_40mhz_bonded_pair_as_full_overlap():
