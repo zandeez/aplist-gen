@@ -1,3 +1,4 @@
+import json
 import urllib.request
 
 from aplist_gen.core import APRecord, ScanEntry
@@ -60,3 +61,21 @@ def push_metrics(url: str, text: str) -> None:
     request = urllib.request.Request(url, data=text.encode("utf-8"), method="POST")
     with urllib.request.urlopen(request, timeout=10) as response:
         response.read()
+
+
+def query_config_change_count(logs_url: str, window: str = "15m") -> int:
+    # Derived metric: counts "Configuration has changed" eventmgr lines
+    # already flowing into victoria-logs, over a trailing window matching
+    # aplist-metrics's own poll cadence. Not exact at window boundaries
+    # (poll jitter can double-count or miss an event right at the edge) --
+    # this is a coarse activity signal, not an audit log; the raw syslog
+    # lines in victoria-logs remain authoritative if precision matters.
+    query = f'eventmgr AND "Configuration has changed" AND _time:{window} | stats count() as cnt'
+    request = urllib.request.Request(
+        logs_url, data=f"query={query}".encode("utf-8"), method="POST"
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        body = response.read().decode("utf-8").strip()
+    if not body:
+        return 0
+    return int(json.loads(body.splitlines()[0])["cnt"])

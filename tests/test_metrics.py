@@ -3,6 +3,7 @@ from aplist_gen.metrics import (
     format_neighbor_metrics,
     format_own_radio_metrics,
     format_poll_failures,
+    query_config_change_count,
 )
 
 
@@ -114,3 +115,76 @@ def test_format_own_radio_metrics_omits_new_metrics_when_unknown():
     assert "aplist_multiple_retry_count" not in text
     assert "aplist_failed_count" not in text
     assert "aplist_ack_failure_count" not in text
+
+
+def test_query_config_change_count_parses_response(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def read(self):
+            return b'{"cnt":"7"}\n'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout=None):
+        captured["url"] = request.full_url
+        captured["data"] = request.data
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    count = query_config_change_count("http://192.0.2.1:9428/select/logsql/query")
+
+    assert count == 7
+    assert captured["url"] == "http://192.0.2.1:9428/select/logsql/query"
+    assert b"eventmgr" in captured["data"]
+    assert b"_time:15m" in captured["data"]
+
+
+def test_query_config_change_count_handles_empty_response(monkeypatch):
+    class FakeResponse:
+        def read(self):
+            return b""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout=None):
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    count = query_config_change_count("http://192.0.2.1:9428/select/logsql/query")
+
+    assert count == 0
+
+
+def test_query_config_change_count_uses_custom_window(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def read(self):
+            return b'{"cnt":"1"}\n'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout=None):
+        captured["data"] = request.data
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    query_config_change_count("http://192.0.2.1:9428/select/logsql/query", window="1h")
+
+    assert b"_time:1h" in captured["data"]
