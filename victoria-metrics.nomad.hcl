@@ -39,7 +39,11 @@ job "victoria-metrics" {
     {
       "panels": [
         { "title": "Own channel per radio", "width": 6, "expr": ["aplist_own_channel"] },
-        { "title": "Connected users per radio", "width": 6, "expr": ["aplist_connected_users"] }
+        {
+          "title": "Connected users by AP and band",
+          "width": 6,
+          "expr": ["sum(aplist_connected_users) by (host, band)"]
+        }
       ]
     },
     {

@@ -38,8 +38,20 @@ def test_format_own_radio_metrics_includes_channel_and_users():
 
     text = format_own_radio_metrics(records)
 
-    assert 'aplist_own_channel{host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network"} 100' in text
-    assert 'aplist_connected_users{host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network"} 3' in text
+    assert 'aplist_own_channel{host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network",band="5g"} 100' in text
+    assert 'aplist_connected_users{host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network",band="5g"} 3' in text
+
+
+def test_format_own_radio_metrics_labels_band_by_channel():
+    records = [
+        APRecord(bssid="AA:AA:AA:AA:AA:01", essid="My Network", channel=6, host="192.0.2.78"),
+        APRecord(bssid="AA:AA:AA:AA:AA:02", essid="My Network", channel=136, host="192.0.2.78"),
+    ]
+
+    text = format_own_radio_metrics(records)
+
+    assert 'band="24g"' in text
+    assert 'band="5g"' in text
 
 
 def test_format_own_radio_metrics_omits_users_line_when_unknown():
@@ -105,8 +117,8 @@ def test_format_own_radio_metrics_includes_snr_and_noise():
 
     text = format_own_radio_metrics(records)
 
-    assert 'aplist_snr_db{host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network"} 35' in text
-    assert 'aplist_noise_floor_dbm{host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network"} -86' in text
+    assert 'aplist_snr_db{host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network",band="5g"} 35' in text
+    assert 'aplist_noise_floor_dbm{host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network",band="5g"} -86' in text
 
 
 def test_format_own_radio_metrics_includes_error_counters():
@@ -119,7 +131,7 @@ def test_format_own_radio_metrics_includes_error_counters():
 
     text = format_own_radio_metrics(records)
 
-    labels = 'host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network"'
+    labels = 'host="192.0.2.78",bssid="AA:AA:AA:AA:AA:01",essid="My Network",band="5g"'
     assert f'aplist_retry_count{{{labels}}} 106268' in text
     assert f'aplist_multiple_retry_count{{{labels}}} 11018' in text
     assert f'aplist_failed_count{{{labels}}} 113060' in text

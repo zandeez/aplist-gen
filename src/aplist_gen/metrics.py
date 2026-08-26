@@ -15,7 +15,8 @@ def format_own_radio_metrics(records: list[APRecord]) -> str:
         if record.channel is None:
             continue
         host = record.host or ""
-        labels = f'host="{host}",bssid="{record.bssid}",essid="{record.essid}"'
+        band = _band_of_channel(record.channel)
+        labels = f'host="{host}",bssid="{record.bssid}",essid="{record.essid}",band="{band}"'
         lines.append(f"aplist_own_channel{{{labels}}} {record.channel}")
         if record.num_users is not None:
             lines.append(f"aplist_connected_users{{{labels}}} {record.num_users}")
