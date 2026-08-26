@@ -3,8 +3,32 @@ from aplist_gen.metrics import (
     format_neighbor_metrics,
     format_own_radio_metrics,
     format_poll_failures,
+    format_uplink_metrics,
     query_config_change_count,
 )
+
+
+def test_format_uplink_metrics_includes_rx_and_tx():
+    text = format_uplink_metrics({"192.0.2.80": (4110649040, 1738220628)})
+
+    assert 'aplist_uplink_rx_bytes{host="192.0.2.80"} 4110649040' in text
+    assert 'aplist_uplink_tx_bytes{host="192.0.2.80"} 1738220628' in text
+
+
+def test_format_uplink_metrics_handles_multiple_hosts():
+    uplink_bytes = {
+        "192.0.2.80": (100, 200),
+        "192.0.2.149": (300, 400),
+    }
+
+    text = format_uplink_metrics(uplink_bytes)
+
+    assert text.count("aplist_uplink_rx_bytes") == 2
+    assert text.count("aplist_uplink_tx_bytes") == 2
+
+
+def test_format_uplink_metrics_empty_dict_produces_no_lines():
+    assert format_uplink_metrics({}) == ""
 
 
 def test_format_own_radio_metrics_includes_channel_and_users():

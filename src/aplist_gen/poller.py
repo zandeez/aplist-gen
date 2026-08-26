@@ -50,6 +50,18 @@ MULTIPLE_RETRY_COUNT_OID = "1.3.6.1.4.1.8744.5.4.2.2.1.5"
 FAILED_COUNT_OID = "1.3.6.1.4.1.8744.5.4.2.2.1.3"
 ACK_FAILURE_COUNT_OID = "1.3.6.1.4.1.8744.5.4.2.2.1.9"
 
+# Standard IF-MIB (RFC 1213), not Colubris-specific -- ifIndex 2 is the
+# AP's wired Ethernet uplink ("eth0"), confirmed identical across all 3
+# hosts on this cluster, 2026-08-26. Gives per-AP aggregate throughput
+# (both radios combined), which is what "which room is busy" actually
+# wants -- deliberately polled separately from poll_ap, not added to it:
+# generate/plan never use this, and the metrics-expansion plan's final
+# review already flagged (accepted, parked) that poll_ap's growing OID
+# list makes those two commands pay SNMP cost for data they don't read.
+UPLINK_ETH0_IFINDEX = "2"
+IF_IN_OCTETS_OID = "1.3.6.1.2.1.2.2.1.10"
+IF_OUT_OCTETS_OID = "1.3.6.1.2.1.2.2.1.16"
+
 
 async def poll_ap(host: str, community: str, timeout: int = 3, retries: int = 1) -> list[APRecord]:
     """Poll one HP MSM AP's own radio config over SNMP.
@@ -99,3 +111,18 @@ async def poll_ap(host: str, community: str, timeout: int = 3, retries: int = 1)
         failed_count=failed_count,
         ack_failure_count=ack_failure_count,
     )
+
+
+async def poll_uplink_bytes(host: str, community: str, timeout: int = 3, retries: int = 1) -> tuple[int, int] | None:
+    """Poll one AP's wired-uplink byte counters (rx, tx), or None if eth0's row is missing."""
+    engine = SnmpEngine()
+    target = await UdpTransportTarget.create((host, 161), timeout=timeout, retries=retries)
+
+    raw_in = await walk_bounded(engine, community, target, IF_IN_OCTETS_OID)
+    raw_out = await walk_bounded(engine, community, target, IF_OUT_OCTETS_OID)
+
+    in_value = raw_in.get(UPLINK_ETH0_IFINDEX)
+    out_value = raw_out.get(UPLINK_ETH0_IFINDEX)
+    if in_value is None or out_value is None:
+        return None
+    return int(in_value.prettyPrint()), int(out_value.prettyPrint())

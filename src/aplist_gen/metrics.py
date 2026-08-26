@@ -52,6 +52,14 @@ def format_neighbor_metrics(sightings: list[ScanEntry]) -> str:
     return "".join(line + "\n" for line in lines)
 
 
+def format_uplink_metrics(uplink_bytes: dict[str, tuple[int, int]]) -> str:
+    lines: list[str] = []
+    for host, (rx_bytes, tx_bytes) in uplink_bytes.items():
+        lines.append(f'aplist_uplink_rx_bytes{{host="{host}"}} {rx_bytes}')
+        lines.append(f'aplist_uplink_tx_bytes{{host="{host}"}} {tx_bytes}')
+    return "".join(line + "\n" for line in lines)
+
+
 def format_poll_failures(hosts: list[str], failed_hosts: list[str]) -> str:
     failed = set(failed_hosts)
     lines = [f'aplist_poll_failure{{host="{host}"}} {1 if host in failed else 0}' for host in hosts]

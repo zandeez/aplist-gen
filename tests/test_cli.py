@@ -229,7 +229,7 @@ async def _fake_gather_metrics_data(*a, **k):
     # _gather_metrics_data is an async function -- run_metrics does
     # asyncio.run(_gather_metrics_data(...)), so the fake must itself be
     # a coroutine function, not a plain lambda returning a tuple.
-    return [], [], []
+    return [], [], [], {}
 
 
 def test_run_metrics_appends_config_change_count_when_logs_url_set(monkeypatch, capsys):
@@ -274,3 +274,21 @@ def test_run_metrics_warns_and_continues_when_logs_query_fails(monkeypatch, caps
     err = capsys.readouterr().err
     assert "warning" in err
     assert "connection refused" in err
+
+
+async def _fake_gather_metrics_data_with_uplink(*a, **k):
+    return [], [], [], {"192.0.2.80": (100, 200)}
+
+
+def test_run_metrics_includes_uplink_bytes(monkeypatch, capsys):
+    monkeypatch.setenv("AP_HOSTS", "192.0.2.80")
+    monkeypatch.delenv("LOGS_URL", raising=False)
+    monkeypatch.delenv("METRICS_URL", raising=False)
+    monkeypatch.setattr("aplist_gen._gather_metrics_data", _fake_gather_metrics_data_with_uplink)
+
+    exit_code = main(["metrics", "--debug-dump"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert 'aplist_uplink_rx_bytes{host="192.0.2.80"} 100' in out
+    assert 'aplist_uplink_tx_bytes{host="192.0.2.80"} 200' in out

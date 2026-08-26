@@ -11,12 +11,13 @@ from aplist_gen.metrics import (
     format_neighbor_metrics,
     format_own_radio_metrics,
     format_poll_failures,
+    format_uplink_metrics,
     push_metrics,
     query_config_change_count,
 )
 from aplist_gen.neighbor_scan import poll_all_neighbors, poll_neighbors
 from aplist_gen.planner import CANDIDATES_24G, CANDIDATES_5G, DFS_CHANNELS, ChannelRecommendation, plan_channels
-from aplist_gen.poller import poll_ap
+from aplist_gen.poller import poll_ap, poll_uplink_bytes
 from aplist_gen.trust_cache import load_cache, process_sightings, save_cache
 
 
@@ -79,15 +80,30 @@ async def _poll_all_neighbors_with_failures(
     return list(entries_by_bssid.values()), failed_hosts
 
 
+async def _poll_all_uplink_bytes(hosts: list[str], community: str) -> dict[str, tuple[int, int]]:
+    results = await asyncio.gather(
+        *(poll_uplink_bytes(host, community) for host in hosts), return_exceptions=True
+    )
+    uplink_bytes: dict[str, tuple[int, int]] = {}
+    for host, result in zip(hosts, results):
+        if isinstance(result, Exception):
+            print(f"warning: uplink-bytes poll of {host} failed: {result}", file=sys.stderr)
+            continue
+        if result is not None:
+            uplink_bytes[host] = result
+    return uplink_bytes
+
+
 async def _gather_metrics_data(
     hosts: list[str], community: str, target_essid: str
-) -> tuple[list[APRecord], list[ScanEntry], list[str]]:
-    (own_records, own_failed), (external_sightings, external_failed) = await asyncio.gather(
+) -> tuple[list[APRecord], list[ScanEntry], list[str], dict[str, tuple[int, int]]]:
+    (own_records, own_failed), (external_sightings, external_failed), uplink_bytes = await asyncio.gather(
         _poll_all_with_failures(hosts, community),
         _poll_all_neighbors_with_failures(hosts, community, target_essid),
+        _poll_all_uplink_bytes(hosts, community),
     )
     failed_hosts = sorted(set(own_failed) | set(external_failed))
-    return own_records, external_sightings, failed_hosts
+    return own_records, external_sightings, failed_hosts, uplink_bytes
 
 
 def run_metrics(args: argparse.Namespace) -> int:
@@ -98,7 +114,7 @@ def run_metrics(args: argparse.Namespace) -> int:
     metrics_url = os.environ.get("METRICS_URL")
     logs_url = os.environ.get("LOGS_URL")
 
-    own_records, external_sightings, failed_hosts = asyncio.run(
+    own_records, external_sightings, failed_hosts, uplink_bytes = asyncio.run(
         _gather_metrics_data(hosts, community, target_essid)
     )
     own_records = [r for r in own_records if r.essid == target_essid]
@@ -107,6 +123,7 @@ def run_metrics(args: argparse.Namespace) -> int:
         format_own_radio_metrics(own_records)
         + format_neighbor_metrics(external_sightings)
         + format_poll_failures(hosts, failed_hosts)
+        + format_uplink_metrics(uplink_bytes)
     )
 
     if logs_url:
