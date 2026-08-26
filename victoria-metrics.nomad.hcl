@@ -71,6 +71,15 @@ job "victoria-metrics" {
       "panels": [
         { "title": "Config-change events (per aplist-metrics poll)", "width": 12, "expr": ["aplist_config_change_count"] }
       ]
+    },
+    {
+      "panels": [
+        {
+          "title": "Uplink bandwidth by AP (bytes/sec, both radios combined)",
+          "width": 12,
+          "expr": ["rate(aplist_uplink_rx_bytes[1h])", "rate(aplist_uplink_tx_bytes[1h])"]
+        }
+      ]
     }
   ]
 }
