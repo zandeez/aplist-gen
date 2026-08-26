@@ -78,6 +78,49 @@ EOH
         destination = "local/dashboards/aplist.json"
       }
 
+      # wan-monitor's metrics (separate project, see its own repo) --
+      # bare metric names so vmui shows all label combinations (one line
+      # per target/interface) automatically, same pattern as aplist.json.
+      template {
+        data        = <<EOH
+{
+  "title": "wan",
+  "rows": [
+    {
+      "panels": [
+        { "title": "Latency by target (ms)", "width": 12, "expr": ["wan_latency_ms"] }
+      ]
+    },
+    {
+      "panels": [
+        { "title": "Packet loss by target (%)", "width": 12, "expr": ["wan_packet_loss_percent"] }
+      ]
+    },
+    {
+      "panels": [
+        {
+          "title": "bond0.100 throughput (bytes/sec)",
+          "width": 6,
+          "expr": ["rate(wan_interface_rx_bytes[5m])", "rate(wan_interface_tx_bytes[5m])"]
+        },
+        {
+          "title": "bond0.100 errors/drops per sec",
+          "width": 6,
+          "expr": [
+            "rate(wan_interface_rx_errors[5m])",
+            "rate(wan_interface_tx_errors[5m])",
+            "rate(wan_interface_rx_dropped[5m])",
+            "rate(wan_interface_tx_dropped[5m])"
+          ]
+        }
+      ]
+    }
+  ]
+}
+EOH
+        destination = "local/dashboards/wan.json"
+      }
+
       volume_mount {
         volume      = "victoria-metrics-data"
         destination = "/storage"
