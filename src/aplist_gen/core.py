@@ -1,6 +1,22 @@
 from dataclasses import dataclass
 
 
+def band_of_channel(channel: int) -> str:
+    return "24g" if channel <= 14 else "5g"
+
+
+# HP 560 hardware fact (confirmed via the AP's own admin UI, 2026-08-25):
+# Radio 1 is 5GHz-only, Radio 2 is 2.4GHz-only -- a chipset can't tune to
+# the other band, so this is fixed, not something that changes at
+# runtime. Used below to reject a handful of live-observed channel
+# readings for a physically-impossible band on that radio (2026-08-25,
+# 2026-08-27 -- e.g. the 2.4GHz radio briefly reporting channel 40 or
+# 52), which always self-corrected next poll -- consistent with a
+# transient SNMP read race (see walk_bounded's docstring for the
+# suspected mechanism and fix) rather than a real AP-side fault.
+RADIO_BAND = {"4": "5g", "5": "24g"}
+
+
 @dataclass(frozen=True)
 class ScanEntry:
     bssid: str
@@ -56,8 +72,12 @@ def parse_own_radio_tables(
     records: list[APRecord] = []
     for suffix in sorted(bssids):
         radio = suffix.split(".", 1)[0]
-        channel = channels.get(radio)
-        if channel is None:
+        channel_raw = channels.get(radio)
+        if channel_raw is None:
+            continue
+        channel = int(channel_raw)
+        expected_band = RADIO_BAND.get(radio)
+        if expected_band is not None and band_of_channel(channel) != expected_band:
             continue
         num_users_raw = users.get(suffix)
         num_users = int(num_users_raw) if num_users_raw is not None else None
@@ -77,7 +97,7 @@ def parse_own_radio_tables(
             APRecord(
                 bssid=bssids[suffix],
                 essid=essids[suffix],
-                channel=int(channel),
+                channel=channel,
                 host=host,
                 num_users=num_users,
                 snr_db=snr_db,

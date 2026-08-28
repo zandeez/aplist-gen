@@ -83,6 +83,54 @@ def test_parse_own_radio_tables_skips_vap_with_no_channel_for_its_radio():
     assert records == []
 
 
+def test_parse_own_radio_tables_rejects_impossible_band_for_radio():
+    # Radio "5" is the 2.4GHz-only radio (RADIO_BAND) -- a live-observed
+    # anomaly (2026-08-25, 2026-08-27) briefly reported a 5GHz channel
+    # number for it. This must be dropped, not trusted.
+    bssids = {"5.1": "AA:AA:AA:AA:AA:02"}
+    essids = {"5.1": "My Network"}
+    channels = {"5": "40"}  # 40 is a 5GHz channel, impossible for radio 5
+
+    records = parse_own_radio_tables(bssids, essids, channels, host="192.0.2.78")
+
+    assert records == []
+
+
+def test_parse_own_radio_tables_rejects_impossible_band_other_radio():
+    # Radio "4" is the 5GHz-only radio -- a 2.4GHz channel number there
+    # is equally impossible.
+    bssids = {"4.1": "AA:AA:AA:AA:AA:01"}
+    essids = {"4.1": "My Network"}
+    channels = {"4": "6"}
+
+    records = parse_own_radio_tables(bssids, essids, channels, host="192.0.2.80")
+
+    assert records == []
+
+
+def test_parse_own_radio_tables_keeps_valid_band_for_known_radios():
+    bssids = {"4.1": "AA:AA:AA:AA:AA:01", "5.1": "AA:AA:AA:AA:AA:02"}
+    essids = {"4.1": "My Network", "5.1": "My Network"}
+    channels = {"4": "100", "5": "13"}
+
+    records = parse_own_radio_tables(bssids, essids, channels, host="192.0.2.80")
+
+    assert len(records) == 2
+
+
+def test_parse_own_radio_tables_does_not_validate_unknown_radio_index():
+    # RADIO_BAND only covers the two radios this hardware actually has --
+    # an unrecognized radio index (e.g. future hardware) isn't rejected
+    # just because it isn't in the known mapping.
+    bssids = {"6.1": "AA:AA:AA:AA:AA:03"}
+    essids = {"6.1": "My Network"}
+    channels = {"6": "40"}
+
+    records = parse_own_radio_tables(bssids, essids, channels, host="192.0.2.80")
+
+    assert len(records) == 1
+
+
 def test_to_simple_ap_list_text_format():
     records = [
         APRecord(bssid="02:00:00:00:00:02", essid="My Network", channel=None),

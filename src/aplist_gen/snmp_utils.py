@@ -11,24 +11,36 @@ async def walk_bounded(engine, community: str, target, base_oid: str) -> dict[st
     """Walk base_oid, stopping as soon as a returned OID leaves that subtree.
 
     pysnmp's walk_cmd does not stop at a subtree boundary on its own --
-    left unbounded it keeps walking the rest of the device's MIB.
+    left unbounded it keeps walking the rest of the device's MIB. Every
+    call therefore breaks/returns out of the walk early rather than
+    letting it exhaust naturally -- explicitly aclose() the generator in
+    a finally block so poll_ap's shared SnmpEngine (10 sequential walks
+    per host) never carries a half-torn-down walk into the next one.
+    Live-verified 2026-08-25/28: a handful of channel readings came back
+    for a physically-impossible band on that radio, self-correcting next
+    poll -- consistent with a stale/delayed response from an abandoned
+    walk bleeding into the next, not a real AP-side fault.
     """
     results: dict[str, str] = {}
-    async for error_indication, error_status, _error_index, var_binds in walk_cmd(
+    walker = walk_cmd(
         engine,
         CommunityData(community),
         target,
         ContextData(),
         ObjectType(ObjectIdentity(base_oid)),
-    ):
-        if error_indication or error_status:
-            break
-        for var_bind in var_binds:
-            oid_str = str(var_bind[0])
-            if not oid_str.startswith(base_oid + "."):
-                return results
-            suffix = oid_str[len(base_oid) + 1 :]
-            results[suffix] = var_bind[1]
+    )
+    try:
+        async for error_indication, error_status, _error_index, var_binds in walker:
+            if error_indication or error_status:
+                break
+            for var_bind in var_binds:
+                oid_str = str(var_bind[0])
+                if not oid_str.startswith(base_oid + "."):
+                    return results
+                suffix = oid_str[len(base_oid) + 1 :]
+                results[suffix] = var_bind[1]
+    finally:
+        await walker.aclose()
     return results
 
 

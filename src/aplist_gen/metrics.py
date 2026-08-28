@@ -2,11 +2,7 @@ import json
 import urllib.parse
 import urllib.request
 
-from aplist_gen.core import APRecord, ScanEntry
-
-
-def _band_of_channel(channel: int) -> str:
-    return "24g" if channel <= 14 else "5g"
+from aplist_gen.core import APRecord, ScanEntry, band_of_channel
 
 
 def format_own_radio_metrics(records: list[APRecord]) -> str:
@@ -15,7 +11,7 @@ def format_own_radio_metrics(records: list[APRecord]) -> str:
         if record.channel is None:
             continue
         host = record.host or ""
-        band = _band_of_channel(record.channel)
+        band = band_of_channel(record.channel)
         labels = f'host="{host}",bssid="{record.bssid}",essid="{record.essid}",band="{band}"'
         lines.append(f"aplist_own_channel{{{labels}}} {record.channel}")
         if record.num_users is not None:
@@ -45,7 +41,7 @@ def format_neighbor_metrics(sightings: list[ScanEntry]) -> str:
 
     lines: list[str] = []
     for channel in sorted(counts):
-        band = _band_of_channel(channel)
+        band = band_of_channel(channel)
         labels = f'channel="{channel}",band="{band}"'
         lines.append(f"aplist_external_network_count{{{labels}}} {counts[channel]}")
         if channel in max_rssi:
