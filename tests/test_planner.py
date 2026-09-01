@@ -185,6 +185,19 @@ def test_dfs_penalty_for_returns_default_outside_hosts_critical_window():
 def test_dfs_penalty_for_returns_default_for_host_without_a_window():
     now = datetime.datetime(2026, 8, 21, 10, 0)
 
+    assert dfs_penalty_for("192.0.2.99", now) == DFS_PENALTY
+
+
+def test_dfs_penalty_for_returns_heavy_penalty_inside_80s_evening_window():
+    # Real radar-vacate + buffering incident, 2026-08-31 22:05 BST.
+    now = datetime.datetime(2026, 8, 31, 22, 5)
+
+    assert dfs_penalty_for("192.0.2.80", now) == DFS_HEAVY_PENALTY
+
+
+def test_dfs_penalty_for_returns_default_outside_80s_evening_window():
+    now = datetime.datetime(2026, 8, 31, 10, 0)
+
     assert dfs_penalty_for("192.0.2.80", now) == DFS_PENALTY
 
 

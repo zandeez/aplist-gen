@@ -58,6 +58,7 @@ DFS_HEAVY_PENALTY = 60.0
 CRITICAL_DFS_HOST_WINDOWS: dict[str, tuple[int, int]] = {
     "192.0.2.78": (6, 18),  # day
     "192.0.2.149": (18, 23),  # evening
+    "192.0.2.80": (18, 23),  # evening -- real radar-vacate + buffering, 2026-08-31 22:05 BST
 }
 
 
