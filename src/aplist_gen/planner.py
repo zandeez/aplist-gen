@@ -53,12 +53,15 @@ CHANNEL_40MHZ_PAIRS: dict[int, int] = {
 
 # Very heavy (but not absolute) DFS avoidance for specific APs during the
 # hours a radar-vacate would disrupt them most -- half-open [start, end)
-# local hours.
+# local hours. Windows are chosen by room usage, not radar timing itself
+# (radar hits don't cluster by time of day -- .80 alone took 6 in the
+# week of 2026-08-25..31, scattered morning/afternoon/evening) -- the
+# point is biasing the plan away from DFS channels during the hours
+# someone's actually there to notice a disruption.
 DFS_HEAVY_PENALTY = 60.0
 CRITICAL_DFS_HOST_WINDOWS: dict[str, tuple[int, int]] = {
-    "192.0.2.78": (6, 18),  # day
-    "192.0.2.149": (18, 23),  # evening
-    "192.0.2.80": (18, 23),  # evening -- real radar-vacate + buffering, 2026-08-31 22:05 BST
+    "192.0.2.78": (6, 18),  # day -- desk, daytime work use
+    "192.0.2.80": (18, 23),  # evening -- lounge, heavy evening use; real radar-vacate + buffering, 2026-08-31 22:05 BST
 }
 
 
