@@ -67,8 +67,10 @@ async def poll_ap(host: str, community: str, timeout: int = 3, retries: int = 1)
     """Poll one HP MSM AP's own radio config over SNMP.
 
     Targets the AP's own configured radios/VAPs directly (not the RF
-    neighbor-scan table) since self-hearing over RF is not reliable --
-    see memory note orb_ap_cluster_is_hp_msm.md for how this was derived.
+    neighbor-scan table) since self-hearing over RF is not reliable: an
+    AP doesn't reliably see its own transmissions in its own neighbor
+    scan, so its own channel/BSSID has to come from its config tables
+    instead.
     """
     engine = SnmpEngine()
     target = await UdpTransportTarget.create((host, 161), timeout=timeout, retries=retries)

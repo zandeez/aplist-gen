@@ -27,7 +27,7 @@ CO_CHANNEL_WEIGHT = 10.0
 # Own-cluster APs interfering with each other counts for more than the same
 # amount of external interference: your clients actively roam between your
 # own APs (real hand-off contention), where next-door's network is just RF
-# noise nobody ever associates to. Ratio confirmed with Andrew 2026-08-22.
+# noise nobody ever associates to.
 CLUSTER_OVERLAP_WEIGHT = CO_CHANNEL_WEIGHT * 2
 
 DFS_PENALTY = 15.0
